@@ -1,19 +1,13 @@
 import pandas as pd
 import numpy as np
 import pywt
-from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Paso 1: Cargar y preparar los datos
 path = 'raw/A.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
-try:
-    df = pd.read_csv(path, index_col='Date', parse_dates=True)
-    prices = df['CLOSE'].dropna()  # Ajusta 'CLOSE' al nombre exacto de la columna
-except KeyError:
-    print("Error: Verifica que la columna 'Date' y 'CLOSE' existan en el CSV.")
-    exit(1)
-except FileNotFoundError:
-    print(f"Error: No se encontró el archivo {path}.")
-    exit(1)
+df = pd.read_csv(path, index_col='Date', parse_dates=True)
+df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
+prices = df['log_return'].dropna() 
 
 # Ajustar la longitud a una potencia de 2 para simplificar el análisis wavelet
 n = len(prices)
