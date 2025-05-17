@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pywt
 import matplotlib.pyplot as plt
+from plots_code import plot_two_axis
 
 # Paso 1: Cargar y preparar los datos
 path = 'raw/A.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
@@ -9,23 +10,43 @@ df = pd.read_csv(path, index_col='Date', parse_dates=True)
 df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
 prices = df['log_return'].dropna() 
 
+# Calcular precios acumulados para visualización
+# Reconstruir la serie de precios a partir de log returns: P_t = P_0 * exp(cumsum(log_return))
+initial_price = df['CLOSE'].iloc[0]
+cumulative_log_returns = prices.cumsum()
+cumulative_prices = initial_price * np.exp(cumulative_log_returns)
+cumulative_prices = pd.Series(cumulative_prices, index=prices.index, name='Cumulative_Price')
+
 # Ajustar la longitud a una potencia de 2 para simplificar el análisis wavelet
 n = len(prices)
 n_adjusted = 2**int(np.log2(n))
 prices = prices[:n_adjusted]
+cumulative_prices = cumulative_prices[:n_adjusted]
 print(f"Longitud de la serie ajustada: {len(prices)}")
 
 # Paso 2: Descomposición con Haar Wavelets hasta nivel 4
 level = 4
-coeffs = pywt.wavedec(prices.values, 'haar', level=level, mode='periodization')
-# coeffs = [cA4, cD4, cD3, cD2, cD1]
+coeffs = pywt.wavedec(prices.values, 'haar', level=level, mode='periodization') # coeffs = [cA4, cD4, cD3, cD2, cD1]
 print("Longitudes de los coeficientes:")
 print(f"cA4: {len(coeffs[0])}, cD4: {len(coeffs[1])}, cD3: {len(coeffs[2])}, cD2: {len(coeffs[3])}, cD1: {len(coeffs[4])}")
 
+# Visualizar coeficientes wavelet
+fig, axs = plt.subplots(len(coeffs), 1, figsize=(10, 10))
+axs[0].plot(coeffs[0])
+axs[0].set_title('Coeficientes de Aproximación (cA4)')
+for i in range(1, len(coeffs)):
+    axs[i].plot(coeffs[i])
+    axs[i].set_title(f'Coeficientes de Detalle (cD{4 - i + 1})')
+plt.tight_layout()
+plt.savefig('plots/wavelet_coeffs.png')
+plt.show()
+
 # Paso 3: Calcular H_i(t) para i=1,...,4
 H_series = {}
+detail_reconstructed_series = {}  # Almacenar detail_reconstructed para cada nivel
 for i in range(1, level + 1):  # i es el nivel de agregación para H
     details_sum = np.zeros_like(prices, dtype=float)
+    detail_reconstructed_series[i] = {}
     for j in range(1, i + 1): # j es el índice del detalle D_j que se está reconstruyendo (D1, D2, ..., Di)
         # coeffs = [cA_L, cD_L, cD_{L-1}, ..., cD_1]
         # L = level (en tu caso, 4)
@@ -53,8 +74,39 @@ for i in range(1, level + 1):  # i es el nivel de agregación para H
             print(f"Error en pywt.waverec para D_{j}: {e}")
             print(f"coeff_list estructura (longitudes): {[len(c) if hasattr(c, 'shape') else 'None o scalar' for c in reconstruction_coeffs_list]}")
             exit(1)
-        details_sum += np.abs(detail_reconstructed)
+        details_sum += np.abs(detail_reconstructed) # sum if D_j
+        detail_reconstructed_series[i][j] = detail_reconstructed
         
+        detail_reconstructed_ser = pd.Series(detail_reconstructed,index=cumulative_prices.index)
+        file_detalle = plot_two_axis(
+                                    primary_series=cumulative_prices,
+                                    secondary_series=detail_reconstructed_ser,
+                                    primary_label="Precios Acumulados",
+                                    secondary_label=f"Detalle Nivel {j}",
+                                    primary_ylabel="Precio acumulado",
+                                    secondary_ylabel=f"Detalle nivel {j}",
+                                    title=f"Detalle Reconstruido Nivel {j} vs Precios Acumulados",
+                                    filename=f"detail_reconstructed_level_{j}.png",
+                                    secondary_color="red"       # opcional (por defecto ya es rojo)
+                                )
+        print(f"Gráfico guardado en: {file_detalle}")
+
+    # Visualizar suma de detalles absolutos contra la serie de precios acumulados
+    secondary_series = details_sum + cumulative_prices.mean()
+
+    file_sum = plot_two_axis(
+        primary_series=cumulative_prices,
+        secondary_series=pd.Series(secondary_series,index=cumulative_prices.index),
+        primary_label="Precios Acumulados",
+        secondary_label=f"Suma Detalles hasta Nivel {i}",
+        primary_ylabel="Precio acumulado",
+        secondary_ylabel=f"Suma detalles nivel {i}",
+        title=f"Suma de Detalles Absolutos hasta Nivel {i} vs Precios Acumulados",
+        filename=f"details_sum_level_{i}.png",
+        secondary_color="green"
+    )
+    print(f"Gráfico guardado en: {file_sum}")
+
     # Reconstruir aproximación A_L (usando cA_L = coeffs[0])
     coeff_list_approx_reconstruction = [coeffs[0]] # Usar el cA_L original
     for k_detail_idx in range(1, len(coeffs)): # Para todos los coeficientes de detalle cD_L, ..., cD_1
@@ -68,6 +120,17 @@ for i in range(1, level + 1):  # i es el nivel de agregación para H
     H_series[i] = details_sum / approx
     print(f"H_{i} calculado, longitud: {len(H_series[i])}")
 
+# Plot H_series
+plt.figure(figsize=(12, 6))
+for i in range(1, level + 1):
+    plt.plot(prices.index, H_series[i], label=f'H_{i}')
+plt.xlabel('Fecha')
+plt.ylabel('H_i(t)')
+plt.title('H_i(t) para cada nivel')
+plt.legend()
+plt.tight_layout()
+plt.savefig('plots/H_series_all_levels.png')
+plt.show()
 
 # Paso 4: Calcular energía móvil (ventana de 30 días)
 window_size = 30
