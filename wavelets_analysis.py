@@ -142,19 +142,63 @@ for i in range(1, level + 1):
     print(f"Energía móvil H_{i}, longitud: {len(energy_series[i])}")
 
 # Paso 5: Reducción de ruido (40% de energía retenida)
+threshold_energy_retain = 0.4
 denoised_series = {}
 for i in range(1, level + 1):
     coeffs_H = pywt.wavedec(H_series[i], 'haar', level=level, mode='periodization')
     # Aplanar coeficientes, ignorando None
     flat_coeffs = np.concatenate([c for c in coeffs_H if c is not None])
+    # Convierte la lista de arrays de coeficientes wavelet (coeffs_H) en un único array NumPy 1D (plano).
+    # Esto facilita el cálculo de estadísticas globales sobre todos los coeficientes.
+    # La cláusula 'if c is not None' es una medida de seguridad, aunque pywt.wavedec típicamente no devuelve elementos None.
+
     sorted_abs_coeffs = np.sort(np.abs(flat_coeffs))[::-1]
+    # La magnitud de un coeficiente wavelet a menudo se correlaciona con su importancia.
+    # Invierte el array ordenado, resultando en coeficientes ordenados por su
+    #    valor absoluto de mayor a menor. Los coeficientes más "energéticos" o importantes quedan al principio.
+
     total_energy = np.sum(sorted_abs_coeffs**2)
+    # Calcula la energía total contenida en la señal H_series[i] a través de sus coeficientes wavelet.
+    # La energía de un coeficiente wavelet es proporcional a su cuadrado.
+    # Esta es la suma de las energías de todos los coeficientes.
+
     cumulative_energy = np.cumsum(sorted_abs_coeffs**2)
-    j = np.searchsorted(cumulative_energy, 0.4 * total_energy)
+    # Calcula la suma acumulada de las energías de los coeficientes (que están ordenados de mayor a menor).
+    # El primer elemento es la energía del coeficiente más grande.
+    # El segundo elemento es la suma de las energías de los dos coeficientes más grandes, y así sucesivamente.
+    # El último elemento de cumulative_energy es igual a total_energy.
+
+    j = np.searchsorted(cumulative_energy, threshold_energy_retain * total_energy)
+    # 1. 0.4 * total_energy: Calcula el 40% de la energía total. Este es el objetivo de energía a retener.
+    # 2. np.searchsorted(cumulative_energy, ...): Encuentra el índice 'j' en el array 'cumulative_energy'
+    #    tal que todos los elementos hasta cumulative_energy[j-1] suman menos del 40% de la energía total,
+    #    y al incluir cumulative_energy[j], se alcanza o supera ese 40%.
+    #    En otras palabras, los 'j' coeficientes más grandes (según sorted_abs_coeffs) contienen
+    #    aproximadamente el 40% de la energía total de la señal H_series[i].
+
     T = sorted_abs_coeffs[j] if j < len(sorted_abs_coeffs) else sorted_abs_coeffs[-1]
+    # Establece el valor del umbral 'T'.
+    # T es el valor absoluto del j-ésimo coeficiente más grande (es decir, el coeficiente más pequeño
+    # entre los que contribuyen al 40% de la energía retenida).
+    # Los coeficientes cuya magnitud sea menor que T serán considerados "ruido".
+    # La condición 'if j < len(sorted_abs_coeffs)' maneja el caso límite donde 'j' podría
+    # estar fuera de los límites del array (por ejemplo, si se retiene el 100% de la energía).
+
     # Umbral duro
     thresholded_coeffs = [pywt.threshold(c, T, mode='hard') if c is not None else c for c in coeffs_H]
+    # Aplica la técnica de "umbral duro" a cada conjunto de coeficientes en la lista original coeffs_H
+    # (que eran [cA_H, cD_L_H, ..., cD_1_H]).
+    # Para cada coeficiente en cada array 'c' de coeffs_H:
+    #  - Si la magnitud del coeficiente (abs(coef)) es mayor que T, el coeficiente se mantiene sin cambios.
+    #  - Si la magnitud del coeficiente (abs(coef)) es menor o igual a T, el coeficiente se establece en 0.
+    # Esto elimina los coeficientes considerados "ruido".
+
     denoised_series[i] = pywt.waverec(thresholded_coeffs, 'haar', mode='periodization')[:len(H_series[i])]
+    # Reconstruye la señal H_series[i] utilizando los coeficientes wavelet umbralizados (thresholded_coeffs).
+    # El resultado, denoised_series[i], es una versión con ruido reducido (denoised) de la H_series[i] original.
+    # Se espera que esta serie "limpia" revele de forma más clara los picos o características significativas.
+    # [:len(H_series[i])] asegura que la serie reconstruida tenga la misma longitud que la H_series[i] original.
+
     print(f"Señal denoised H_{i}, longitud: {len(denoised_series[i])}")
 
 # Paso 6: Identificar fechas críticas y señales de alerta

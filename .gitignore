@@ -1,4 +1,5 @@
 /venv_3_12*
+/__pycache__*
 /raw*
 links_importantes.txt
 /plots/*
