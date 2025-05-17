@@ -1,6 +1,11 @@
+# XXX comentarios
+# 1) ver bien los ejes y leyendas de los gráficos
+# 2) ver que tengan sentido y revisar los nombres
+# 3) hacer el plot del Señal denoised H_
+
 import pandas as pd
 import numpy as np
-import pywt
+path = 'raw/AAP.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
 import matplotlib.pyplot as plt
 from plots_code import plot_two_axis
 
@@ -140,6 +145,18 @@ for i in range(1, level + 1):
         window=window_size, min_periods=1
     ).apply(lambda x: np.sum(x**2), raw=True).values
     print(f"Energía móvil H_{i}, longitud: {len(energy_series[i])}")
+
+# Plot H_series
+plt.figure(figsize=(12, 6))
+for i in range(1, level + 1):
+    plt.plot(prices.index, energy_series[i], label=f'H_{i}')
+plt.xlabel('Fecha')
+plt.ylabel('Energy_i(t)')
+plt.title('Energy_i(t) para cada nivel')
+plt.legend()
+plt.tight_layout()
+plt.savefig('plots/Energy_iall_levels.png')
+# plt.show()
 
 # Paso 5: Reducción de ruido (40% de energía retenida)
 threshold_energy_retain = 0.4
