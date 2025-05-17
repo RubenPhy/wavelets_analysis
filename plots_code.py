@@ -14,7 +14,7 @@ def plot_two_axis(
     filename="plot.png",
     figsize=(12, 6),
     secondary_color="red",
-    show=True
+    show=False
 ):
     """
     Dibuja dos series (mismo índice) con ejes y independientes.

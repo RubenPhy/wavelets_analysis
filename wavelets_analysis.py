@@ -5,12 +5,12 @@
 
 import pandas as pd
 import numpy as np
-path = 'raw/AAP.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
+import pywt
 import matplotlib.pyplot as plt
 from plots_code import plot_two_axis
 
 # Paso 1: Cargar y preparar los datos
-path = 'raw/A.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
+path = 'raw/AAP.N-2012-03-29-2024-03-01.csv'  # Asegúrate de que la ruta sea correcta
 df = pd.read_csv(path, index_col='Date', parse_dates=True)
 df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
 prices = df['log_return'].dropna() 
@@ -44,7 +44,7 @@ for i in range(1, len(coeffs)):
     axs[i].set_title(f'Coeficientes de Detalle (cD{4 - i + 1})')
 plt.tight_layout()
 plt.savefig('plots/wavelet_coeffs.png')
-plt.show()
+#plt.show()
 
 # Paso 3: Calcular H_i(t) para i=1,...,4
 H_series = {}
@@ -135,7 +135,7 @@ plt.title('H_i(t) para cada nivel')
 plt.legend()
 plt.tight_layout()
 plt.savefig('plots/H_series_all_levels.png')
-plt.show()
+#plt.show()
 
 # Paso 4: Calcular energía móvil (ventana de 30 días)
 window_size = 30
@@ -159,7 +159,7 @@ plt.savefig('plots/Energy_iall_levels.png')
 # plt.show()
 
 # Paso 5: Reducción de ruido (40% de energía retenida)
-threshold_energy_retain = 0.4
+threshold_energy_retain = 0.2
 denoised_series = {}
 for i in range(1, level + 1):
     coeffs_H = pywt.wavedec(H_series[i], 'haar', level=level, mode='periodization')
@@ -262,30 +262,58 @@ print("Gráfico de todas las Denoised H_series guardado.")
 
 
 # Sistema de contador para señales de alerta
+# Diccionario para almacenar las fechas de alerta temprana para cada nivel H_i
 early_warnings = {}
+
+# Itera sobre cada nivel de H_series (H_1, H_2, H_3, H_4)
+# Inicializa la lista de alertas para el H_i actual
 for i in range(1, level + 1): # i se refiere al H_i que se está analizando
     early_warnings[i] = []
+
+    # Itera sobre cada 'fecha crítica' encontrada para el H_i actual
+    # (critical_dates[i] contiene las fechas donde denoised_series[i] fue significativamente no cero)
     for crit_date in critical_dates[i]:
+        # crit_idx: Obtiene el índice numérico (posición) de la fecha crítica en la serie de precios original.
         crit_idx = prices.index.get_loc(crit_date)
-        counter = 0
+        counter = 0 # Inicializa un contador para esta fecha crítica específica.
+
+        # Este bucle simula "terminar" la serie de precios en diferentes puntos 'x'
+        # alrededor de la fecha crítica 'crit_idx'.
+        # Se define una ventana de 31 días: 15 días antes de crit_idx, crit_idx mismo, y 15 días después.
+        # max(0, crit_idx - 15): asegura que no empecemos antes del inicio de la serie.
+        # min(len(prices), crit_idx + 16): asegura que no nos pasemos del final de la serie.
         for x in range(max(0, crit_idx - 15), min(len(prices), crit_idx + 16)):
+
+            # -- Inicio de la Simulación para el punto 'x' --
+            # El objetivo es ver si la fecha 'crit_date' todavía se detectaría como
+            # anómala si solo hubiéramos tenido datos hasta el día 'x'.
+
             # Crear serie modificada
+            # truncated: Toma la serie de retornos logarítmicos ('prices') desde el inicio hasta el día 'x'.
             truncated = prices.iloc[:x+1].values
+            # flipped: Invierte la serie truncada.
             flipped = truncated[::-1]
+            # modified: Crea una nueva serie de longitud igual a la 'prices' original.
+            # Lo hace concatenando la 'truncated' y su 'flipped' repetidamente.
+            # Esto es una técnica para extender artificialmente la serie truncada para el análisis wavelet,
+            # tratando de minimizar los efectos de borde y mantener cierta estructura estadística.
+            # (len(prices) // (2 * (x+1)) + 1): Calcula cuántas veces se necesita repetir el patrón [truncated, flipped].
             modified = np.concatenate([truncated, flipped] * (len(prices) // (2 * (x+1)) + 1))[:len(prices)]
+
+            # Ahora se repite el mismo análisis wavelet que se hizo para la serie completa,
+            # pero sobre esta 'serie modificada' que simula tener datos solo hasta el día 'x'.
             coeffs_mod = pywt.wavedec(modified, 'haar', level=level, mode='periodization')
             details_sum_mod = np.zeros_like(prices, dtype=float)
-            
-            # El bucle 'j' aquí se refiere a la suma de los D_j para construir H_i
-            # (el mismo 'j' que en el cálculo original de H_series)
-            for j in range(1, i + 1): # Suma de |D_1| hasta |D_i|
-                # Índice en coeffs_mod para el cD_j que se está reconstruyendo
+
+            # El bucle 'j' interno calcula la suma de los detalles D_j para H_i, igual que en el Paso 3
+            # pero usando coeffs_mod de la serie modificada.
+            # 'i' aquí es el 'i' del bucle externo (el nivel de H_i que se está probando).
+            for j in range(1, i + 1): # Suma de |D_1_mod| hasta |D_i_mod|
                 idx_Dj_in_coeffs_mod = level - j + 1 
 
                 coeff_list_detail_mod_reconstruct = []
                 # 1. Coeficiente de aproximación cA_mod (coeffs_mod[0]) - siempre cero
-                coeff_list_detail_mod_reconstruct.append(np.zeros_like(coeffs_mod[0]))
-                
+                coeff_list_detail_mod_reconstruct.append(np.zeros_like(coeffs_mod[0])) # cA_mod = 0
                 # 2. Coeficientes de detalle cD_L_mod, ..., cD_1_mod
                 for k_idx_mod in range(1, len(coeffs_mod)): # k_idx_mod de 1 a level
                     if k_idx_mod == idx_Dj_in_coeffs_mod:
@@ -293,32 +321,55 @@ for i in range(1, level + 1): # i se refiere al H_i que se está analizando
                     else:
                         coeff_list_detail_mod_reconstruct.append(np.zeros_like(coeffs_mod[k_idx_mod]))
                 
-                detail_reconstructed = pywt.waverec(coeff_list_detail_mod_reconstruct, 'haar', mode='periodization')[:len(details_sum_mod)]
-                details_sum_mod += np.abs(detail_reconstructed)
-            
+                detail_reconstructed_mod = pywt.waverec(coeff_list_detail_mod_reconstruct, 'haar', mode='periodization')
+                details_sum_mod += np.abs(detail_reconstructed_mod[:len(details_sum_mod)]) # Ajustar longitud antes de sumar
+
             # Reconstruir aproximación A_L_mod (usando cA_L_mod = coeffs_mod[0])
-            coeff_list_approx_mod_reconstruct = [coeffs_mod[0]] # cA_L_mod
+            coeff_list_approx_mod_reconstruct = [coeffs_mod[0]]
             for k_idx_mod_detail in range(1, len(coeffs_mod)):
                 coeff_list_approx_mod_reconstruct.append(np.zeros_like(coeffs_mod[k_idx_mod_detail]))
             
             approx_mod = pywt.waverec(coeff_list_approx_mod_reconstruct, 'haar', mode='periodization')[:len(details_sum_mod)]
-            approx_mod = np.where(approx_mod == 0, 1e-10, approx_mod)
-            H_mod = details_sum_mod / approx_mod
-            
-            # La parte de thresholded_coeffs_mod y pywt.waverec para denoised_mod ya debería estar bien
-            # siempre que coeffs_H_mod (resultado de wavedec) no contenga Nones.
+            approx_mod = np.where(approx_mod == 0, 1e-10, approx_mod) # Evitar división por cero
+            H_mod = details_sum_mod / approx_mod # H_mod para la serie simulada
+
+            # Aplicar denoising a H_mod, igual que en el Paso 5.
             coeffs_H_mod = pywt.wavedec(H_mod, 'haar', level=level, mode='periodization')
-            flat_coeffs_mod = np.concatenate([c for c in coeffs_H_mod if c is not None]) # c is not None es una buena guarda pero wavedec no debería dar Nones
+            flat_coeffs_mod = np.concatenate([c for c in coeffs_H_mod if c is not None])
             sorted_abs_coeffs_mod = np.sort(np.abs(flat_coeffs_mod))[::-1]
+            
+            # Nota: 'total_energy' aquí se refiere a la energía de la H_series[i] ORIGINAL (calculada en el Paso 5).
+            # Esto es importante: el umbral de energía T_mod se calcula relativo a la energía de la H_series original,
+            # no de la H_mod actual. El paper (p.25) parece sugerir que el umbral T se mantiene.
+            # "We apply the wavelet method to the newly created price series" implica repetir todo el proceso,
+            # pero el cálculo de T_mod debería ser consistente. Si se usara la energía de H_mod,
+            # el umbral podría variar mucho. El código usa `0.4 * total_energy` (total_energy de la H_series[i] no modificada).
+            # Esta es una sutileza, pero es como está implementado.
+            
+            # Si T_mod debe calcularse usando la energía de H_mod, entonces sería:
+            # total_energy_mod = np.sum(sorted_abs_coeffs_mod**2)
+            # j_mod = np.searchsorted(cumulative_energy_mod, threshold_energy_retain * total_energy_mod)
+            # Pero el código actual usa 'total_energy' de la H_series[i] original.
+
+             # Energía acumulada de H_mod
             cumulative_energy_mod = np.cumsum(sorted_abs_coeffs_mod**2)
-            j_mod = np.searchsorted(cumulative_energy_mod, 0.4 * total_energy)
+             # OJO: total_energy es de H_series[i]
+            j_mod = np.searchsorted(cumulative_energy_mod, threshold_energy_retain * total_energy)
             T_mod = sorted_abs_coeffs_mod[j_mod] if j_mod < len(sorted_abs_coeffs_mod) else sorted_abs_coeffs_mod[-1]
             
-            thresholded_coeffs_mod = [pywt.threshold(c, T_mod, mode='hard') for c in coeffs_H_mod] # Asumiendo que c nunca es None
-            denoised_mod = pywt.waverec(thresholded_coeffs_mod, 'haar', mode='periodization')[:len(H_mod)]
+            thresholded_coeffs_mod = [pywt.threshold(c, T_mod, mode='hard') for c in coeffs_H_mod]
+            denoised_mod = pywt.waverec(thresholded_coeffs_mod, 'haar', mode='periodization')[:len(H_mod)] # Denoised H_mod
 
+            # -- Fin de la Simulación para el punto 'x' --
+
+            # Comprobar si la 'crit_date' (con índice 'crit_idx') sigue siendo significativa en esta simulación.
+            # Es decir, si el valor de 'denoised_mod' en la posición 'crit_idx' es mayor que una pequeña tolerancia.
             if crit_idx < len(denoised_mod) and np.abs(denoised_mod[crit_idx]) > 1e-10:
-                counter += 1
+                counter += 1 # Si la fecha crítica aún es detectada, incrementar el contador.
+        
+        # Después de probar todos los puntos 'x' en la ventana alrededor de 'crit_date':
+        # Si el contador es mayor que 10 (un umbral de robustez, como en la p.25 del paper),
+        # entonces esta 'crit_date' se considera una "señal de alerta temprana" robusta.
         if counter > 10:
             early_warnings[i].append(crit_date)
     print(f"H_{i} - Señales de alerta calculadas: {len(early_warnings[i])}")
