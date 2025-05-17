@@ -332,3 +332,100 @@ for i in range(1, level + 1):
             print(f"  {date.strftime('%Y-%m-%d')}")
     else:
         print("  Ninguna señal detectada.")
+
+# Seleccionar el nivel de H_series para el cual mostrar las alertas
+# Puedes cambiar esto o iterar si quieres mostrar alertas de múltiples niveles H_i
+level_to_plot_warnings = 4
+
+# Crear el gráfico de precios acumulados
+plt.figure(figsize=(15, 7))
+plt.plot(cumulative_prices.index, cumulative_prices, label='Precios Acumulados (S&P 500 simulado)', color='blue')
+
+# Añadir líneas verticales para las fechas de alerta temprana
+if level_to_plot_warnings in early_warnings and early_warnings[level_to_plot_warnings]:
+    alert_dates_to_plot = early_warnings[level_to_plot_warnings]
+    for alert_date in alert_dates_to_plot:
+        plt.axvline(x=alert_date, color='red', linestyle='--', linewidth=1, label='Alerta Temprana H_4' if alert_date == alert_dates_to_plot[0] else "") # Etiqueta solo la primera para no saturar la leyenda
+
+plt.title(f'Precios Acumulados y Señales de Alerta Temprana para H_{level_to_plot_warnings}')
+plt.xlabel('Fecha')
+plt.ylabel('Precio Acumulado')
+# Asegurar que la leyenda se muestre correctamente si hay alertas
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles)) # Evitar etiquetas duplicadas en la leyenda
+plt.legend(by_label.values(), by_label.keys())
+
+plt.tight_layout()
+plt.savefig(f'plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings.png')
+plt.show()
+print(f"Gráfico de precios con alertas H_{level_to_plot_warnings} guardado en: plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings.png")
+
+# Si quieres graficar para todos los niveles de H_i
+all_distinct_warnings = set()
+for i in range(1, level + 1):
+    if i in early_warnings:
+        for date in early_warnings[i]:
+            all_distinct_warnings.add(date)
+
+if all_distinct_warnings:
+    plt.figure(figsize=(15, 7))
+    plt.plot(cumulative_prices.index, cumulative_prices, label='Precios Acumulados (S&P 500 simulado)', color='blue')
+    
+    # Graficar todas las alertas distintas
+    sorted_alerts = sorted(list(all_distinct_warnings))
+    for alert_date in sorted_alerts:
+        plt.axvline(x=alert_date, color='purple', linestyle=':', linewidth=1, label='Alerta Temprana (cualquier H_i)' if alert_date == sorted_alerts[0] else "")
+
+    plt.title('Precios Acumulados y Todas las Señales de Alerta Temprana Distintas')
+    plt.xlabel('Fecha')
+    plt.ylabel('Precio Acumulado')
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+    plt.tight_layout()
+    plt.savefig('plots/cumulative_prices_with_all_warnings.png')
+    plt.show()
+    print(f"Gráfico de precios con todas las alertas guardado en: plots/cumulative_prices_with_all_warnings.png")
+else:
+    print("No se encontraron alertas tempranas para graficar.")
+
+
+# --- Ejemplo de generación de datos sintéticos (similar a p.27) ---
+# Parámetros para la serie sintética
+num_points = 2048 # Similar a tu n_adjusted
+initial_synthetic_price = 1000
+mean_log_return = 0.0001
+std_dev_log_return_normal = 0.01
+std_dev_log_return_crisis = 0.05 # Mayor volatilidad para un período de crisis
+
+# Generar retornos logarítmicos
+log_returns_synthetic = np.random.normal(mean_log_return, std_dev_log_return_normal, num_points)
+
+# Simular un período de crisis (ejemplo: entre el punto 1000 y 1200)
+crisis_start = 1000
+crisis_end = 1200
+log_returns_synthetic[crisis_start:crisis_end] = np.random.normal(mean_log_return, std_dev_log_return_crisis, crisis_end - crisis_start)
+
+# Crear fechas de índice para la serie sintética (puedes usar las de tus datos 'prices' o crear nuevas)
+synthetic_index = prices.index[:num_points] if len(prices.index) >= num_points else pd.date_range(start="2000-01-01", periods=num_points, freq='B')
+
+log_returns_synthetic_series = pd.Series(log_returns_synthetic, index=synthetic_index)
+
+# Reconstruir precios acumulados sintéticos
+cumulative_log_returns_synthetic = log_returns_synthetic_series.cumsum()
+prices_synthetic_cumulative = initial_synthetic_price * np.exp(cumulative_log_returns_synthetic)
+
+plt.figure(figsize=(10, 5))
+plt.plot(prices_synthetic_cumulative.index, prices_synthetic_cumulative, label='Precios Sintéticos Acumulados')
+plt.title('Serie de Precios Sintéticos Generada')
+plt.xlabel('Tiempo (Índice)')
+plt.ylabel('Precio Sintético')
+plt.legend()
+plt.savefig('plots/synthetic_price_series.png')
+plt.show()
+print("Gráfico de serie de precios sintéticos guardado.")
+
+# AHORA, podrías reemplazar 'prices = df['log_return'].dropna()' al inicio de tu script
+# con 'prices = log_returns_synthetic_series' y 'cumulative_prices = prices_synthetic_cumulative'
+# y correr todo el análisis sobre estos datos sintéticos para ver cómo se comporta el método.
+# Asegúrate de ajustar n_adjusted si la longitud de la serie sintética es diferente.
