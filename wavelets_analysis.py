@@ -225,6 +225,42 @@ for i in range(1, level + 1):
     critical_dates[i] = prices.index[critical_indices]
     print(f"H_{i} - Fechas críticas: {len(critical_dates[i])}")
 
+# --- Ejemplo para graficar H_i y su denoised_series[i]
+level_to_plot_denoising = 1 # Elige un nivel, por ejemplo H_1
+
+plt.figure(figsize=(12, 6))
+
+plt.subplot(2, 1, 1)
+plt.plot(prices.index, H_series[level_to_plot_denoising], label=f'H_{level_to_plot_denoising} (Observada)')
+plt.title(f'H_{level_to_plot_denoising} (Observada)')
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(prices.index, denoised_series[level_to_plot_denoising], label=f'Denoised H_{level_to_plot_denoising}', color='orange')
+plt.title(f'Denoised H_{level_to_plot_denoising} (40% Energía Retenida)')
+plt.legend()
+
+plt.tight_layout()
+plt.savefig(f'plots/H{level_to_plot_denoising}_vs_denoised.png')
+plt.show()
+print(f"Gráfico de H_{level_to_plot_denoising} y su versión denoised guardado.")
+
+
+# --- Plot Denoised H_series
+plt.figure(figsize=(12, 6))
+for i in range(1, level + 1):
+    # Asegurarse de que el índice de tiempo se alinee si es necesario (prices.index debería funcionar)
+    plt.plot(prices.index[:len(denoised_series[i])], denoised_series[i], label=f'Denoised H_{i}')
+plt.xlabel('Fecha')
+plt.ylabel('Denoised H_i(t)')
+plt.title('Denoised H_i(t) para cada nivel (40% Energía Retenida)')
+plt.legend()
+plt.tight_layout()
+plt.savefig('plots/denoised_H_series_all_levels.png')
+plt.show()
+print("Gráfico de todas las Denoised H_series guardado.")
+
+
 # Sistema de contador para señales de alerta
 early_warnings = {}
 for i in range(1, level + 1): # i se refiere al H_i que se está analizando
