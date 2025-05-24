@@ -1,6 +1,12 @@
 import pandas as pd
 import glob
 import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# —-—-—- Ajustes globales Seaborn —-—-—-
+sns.set_theme(style="darkgrid")          # fondo gris con rejilla en gris oscuro
+plt.rcParams.update({"axes.titleweight": "bold"})  # (opcional) negrita en títulos
 
 # Broad sector categorization based on the industry
 broad_sectors = {
@@ -109,22 +115,31 @@ broad_sectors = {
 df_sp_info = pd.read_excel(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\raw\S&P_500.xlsx')
 
 # Path to the folder containing the CSV files
-csv_folder = r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\raw'  # Ajusta si es necesario
+csv_folder = r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\raw'
 
-# Leer todos los archivos CSV de las empresas
+# Read all CSV files for companies
 csv_files = glob.glob(os.path.join(csv_folder, '*.csv'))
 
-# Crear un diccionario para almacenar los DataFrames de cada empresa
+# Create a dictionary to store DataFrames for each company
 dfs = {}
 for file in csv_files:
     ticker = os.path.splitext(os.path.basename(file))[0]
     dfs[ticker.split('-')[0]] = pd.read_csv(file, parse_dates=['Date'])
 
-# Crear un índice sintético de retorno para cada sector
-sector_indices = {}
-for sector in df_sp_info['Industry Name'].unique():
-    print(f'Processing sector: {sector}')
-    tickers = df_sp_info[df_sp_info['Industry Name'] == sector]['Identifier']
+# Map subsectors to broad sectors
+subsector_to_broad = {}
+for broad, subsectors in broad_sectors.items():
+    for subsector in subsectors:
+        subsector_to_broad[subsector] = broad
+
+# Add broad sector column to df_sp_info
+df_sp_info['Broad Sector'] = df_sp_info['Industry Name'].map(subsector_to_broad)
+
+# Create synthetic indices for broad sectors (cumulative returns)
+broad_sector_indices = {}
+for broad_sector in broad_sectors.keys():
+    print(f'Processing broad sector: {broad_sector}')
+    tickers = df_sp_info[df_sp_info['Broad Sector'] == broad_sector]['Identifier']
     sector_returns = []
     for ticker in tickers:
         print(f'Processing ticker: {ticker}')
@@ -135,10 +150,14 @@ for sector in df_sp_info['Industry Name'].unique():
             df.set_index('Date', inplace=True)
             df['Return'] = df['CLOSE'].pct_change()
             sector_returns.append(df['Return'])
-    sector_df = pd.concat(sector_returns, axis=1)
-    sector_indices[sector] = sector_df.mean(axis=1)
+    if sector_returns:  # Only process if there are valid returns
+        sector_df = pd.concat(sector_returns, axis=1)
+        sector_mean = sector_df.mean(axis=1)
+        # Calculate cumulative return: (1 + r).cumprod() - 1
+        sector_cumulative = (1 + sector_mean).cumprod() - 1
+        broad_sector_indices[broad_sector] = sector_cumulative
 
-# Crear un índice sintético S&P500 con el promedio de los retornos de las 500 empresas
+# Create synthetic S&P 500 index (cumulative return)
 all_returns = []
 for ticker in df_sp_info['Identifier']:
     if ticker not in dfs:
@@ -149,21 +168,29 @@ for ticker in df_sp_info['Identifier']:
         df['Return'] = df['CLOSE'].pct_change()
         all_returns.append(df['Return'])
 sp500_df = pd.concat(all_returns, axis=1)
-synthetic_sp500 = sp500_df.mean(axis=1)
+synthetic_sp500 = (1 + sp500_df.mean(axis=1)).cumprod() - 1
 
-# Plotear el índice sintético S&P500 y los índices de sectores con seaborn
-import seaborn as sns
-import matplotlib.pyplot as plt
+# Save results to CSV
+results_df = pd.DataFrame({'S&P 500': synthetic_sp500})
+for broad_sector, returns in broad_sector_indices.items():
+    results_df[broad_sector] = returns
+results_df.to_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\sector_cumulative_returns.csv')
 
+# Set seaborn style with grid
+sns.set_style("whitegrid")
+
+# Plot the synthetic S&P 500 and broad sector indices
 plt.figure(figsize=(14, 8))
-sns.lineplot(data=synthetic_sp500, label='Synthetic S&P 500', color='blue')
-for sector, returns in sector_indices.items():
-    sns.lineplot(data=returns, label=f'Sector: {sector}', alpha=0.7)
-plt.title('Synthetic S&P 500 and Sector Indices')
-plt.xlabel('Date')
-plt.ylabel('Returns')
-plt.legend()
-plt.grid(True)
+sns.lineplot(data=synthetic_sp500, label='Synthetic S&P 500', color='black')
+for broad_sector, returns in broad_sector_indices.items():
+    sns.lineplot(data=returns, label=f'Sector: {broad_sector}', alpha=0.7)
+plt.title('Synthetic S&P 500 and Broad Sector Cumulative Returns', fontsize=18)
+plt.xlabel('Date', fontsize=14)
+plt.ylabel('Cumulative Returns (%)', fontsize=14)
+plt.gca().yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(xmax=1, decimals=1))
+plt.legend(fontsize=14)
+plt.tick_params(axis='both', labelsize=14)
 plt.tight_layout()
+# Save the plot
+plt.savefig(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\plots\returns_SP500_and_sectors.png')
 plt.show()
-
