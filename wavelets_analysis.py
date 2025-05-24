@@ -17,13 +17,19 @@ plt.rcParams.update({"axes.titleweight": "bold"})  # (opcional) negrita en títu
 # ---------------------------------
 
 # Paso 1: Cargar y preparar los datos
-path = 'raw/AAP.N-2012-03-29-2024-03-01.csv'
+ticker_name = 'SP' #'AAP.N'
+# path = f'raw/{ticker_name}-2012-03-29-2024-03-01.csv'
+# df = pd.read_csv(path, index_col='Date', parse_dates=True)
+# df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
+# df_log_ret = df['log_return'].dropna() 
+# initial_price = df['CLOSE'].dropna().iloc[0]
+
+path = 'sector_log_returns.csv'
 df = pd.read_csv(path, index_col='Date', parse_dates=True)
-df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
-df_log_ret = df['log_return'].dropna() 
+df_log_ret = df['S&P 500'].dropna()
+initial_price = 1
 
 # Calcular precios acumulados para visualización
-initial_price = df['CLOSE'].dropna().iloc[0]
 cumulative_log_returns = df_log_ret.cumsum()
 cumulative_prices = initial_price * np.exp(cumulative_log_returns)
 cumulative_prices = pd.Series(cumulative_prices, index=df_log_ret.index, name='Cumulative_Price')
@@ -60,9 +66,10 @@ for i_coeff in range(1, len(coeffs)):
 fig.suptitle('Wavelet Coefficients of Log Returns', fontsize=22)
 plt.tight_layout(rect=[0, 0, 1, 0.96])             # deja sitio al título general
 # Guardar y mostrar
-plt.savefig('plots/wavelet_coefficients_log_returns.png')
-print("Wavelet coefficient plot saved to: plots/wavelet_coefficients_log_returns.png")
+plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}.png')
+print(f"Wavelet coefficient plot saved to: plots/wavelet_coefficients_log_returns_{ticker_name}.png")
 plt.show()
+plt.close()
 
 # Visualizar 
 top_pct = 3
@@ -100,112 +107,122 @@ extreme_dates = extract_extreme_dates(coeffs, level, df_log_ret.index, top_pct)
 sns.set_theme(style="darkgrid")
 fig, ax = plt.subplots(figsize=(14, 6))
 ax.plot(cumulative_prices, linewidth=1.2) # o df['CLOSE']
-ax.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations')
-ax.set_ylabel('Price')
-ax.set_xlabel('Date')
+ax.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations', fontsize=22)
+ax.set_ylabel('Price', fontsize=18)
+ax.set_xlabel('Date', fontsize=18)
+
+# Increase tick label size
+ax.tick_params(axis='both', labelsize=15)
 
 # Colores distintos para cada conjunto de líneas
 palette = sns.color_palette('husl', n_colors=len(extreme_dates))
 
 for (coef_name, dates), color in zip(extreme_dates.items(), palette):
     for date in dates:
-        ax.axvline(date, color=color, linewidth=2.5, linestyle='--', alpha=0.7)  # <-- Más ancho
+        ax.axvline(date, color=color, linewidth=1.0, linestyle='--', alpha=0.7)  # <-- Más ancho
 
 # Leyenda manual (una entrada por coeficiente)
 handles = [Line2D([0], [0], color=c, lw=3, linestyle='--', label=n)
            for (n, _), c in zip(extreme_dates.items(), palette)]
-ax.legend(handles=handles, title='Coefficient band', loc='upper left')
+ax.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=14, title_fontsize=15)
 plt.tight_layout()
-plt.savefig('plots/dates_with_highest_coeff.png')
+plt.savefig(f'plots/dates_with_highest_coeff_{ticker_name}.png')
 plt.show()
-
+plt.close()
 
 # Paso 3: Calcular H_i(t) para i=1,...,level
+sns.set_theme(
+    style="darkgrid",
+    rc={
+        "axes.titlesize": 18,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+    }
+)
 H_series = {}
 detail_reconstructed_series = {}  # Almacenar detail_reconstructed para cada nivel
-print("\n--- Iniciando Cálculo de H_i(t) y Reconstrucción de Detalles ---")
-for i_h_level in range(1, level + 1): # i_h_level es el 'i' en H_i (nivel de agregación para H)
-    details_sum = np.zeros_like(df_log_ret.values, dtype=float) # Usar .values para asegurar array numpy
-    detail_reconstructed_series[i_h_level] = {}
-    print(f"\nCalculando para H_{i_h_level}:")
-    for j_detail_level in range(1, i_h_level + 1): # j_detail_level es el 'j' en D_j (nivel del detalle individual)
-        # El coeficiente cD_j (ej: D1, D2) corresponde a coeffs[level - j_detail_level + 1]
-        idx_Dj_in_coeffs = level - j_detail_level + 1
+print("\n--- Starting H_i(t) computation and detail reconstruction ---")
+for i_level in range(1, level + 1):              # i_level is the i in H_i
+    abs_detail_sum = np.zeros_like(df_log_ret.values, dtype=float)
+    detail_reconstructed_series[i_level] = {}
+    print(f"\nComputing H_{i_level} …")
 
-        reconstruction_coeffs_list = [np.zeros_like(coeffs[0])] # cA_L = 0
-        for k_coeffs_idx in range(1, len(coeffs)):
-            if k_coeffs_idx == idx_Dj_in_coeffs:
-                reconstruction_coeffs_list.append(coeffs[k_coeffs_idx])
-            else:
-                reconstruction_coeffs_list.append(np.zeros_like(coeffs[k_coeffs_idx]))
-        
-        # print(f"  Reconstruyendo D_{j_detail_level} para H_{i_h_level}, longitudes de coeff_list: {[len(c) if hasattr(c, 'shape') else None for c in reconstruction_coeffs_list]}")
+    # ------- Reconstruct each detail D_j and accumulate its |·| -------
+    for j_level in range(1, i_level + 1):        # j_level is the j in D_j
+        idx_coeff = level - j_level + 1          # position of cD_j in coeffs
+
+        # Build a coefficient list with only cD_j kept, others → 0
+        rec_coeff_list = [np.zeros_like(coeffs[0])]          # null cA_L
+        for idx in range(1, len(coeffs)):
+            rec_coeff_list.append(coeffs[idx] if idx == idx_coeff
+                                   else np.zeros_like(coeffs[idx]))
+
+        # Reconstruct time-domain detail D_j(t)
         try:
-            detail_reconstructed = pywt.waverec(reconstruction_coeffs_list, 'haar', mode='periodization')
-            detail_reconstructed = detail_reconstructed[:len(details_sum)]
-        except ValueError as e:
-            print(f"  Error en pywt.waverec para D_{j_detail_level}: {e}")
-            exit(1)
-        
-        details_sum += np.abs(detail_reconstructed)
-        detail_reconstructed_series[i_h_level][j_detail_level] = detail_reconstructed
-        
-        # Visualizar detalle reconstruido individual D_j vs Precios Acumulados (usando plot_two_axis)
-        detail_reconstructed_pd_series = pd.Series(detail_reconstructed, index=cumulative_prices.index, name=f"Detalle_D{j_detail_level}")
-        file_detalle_path = plot_two_axis(
+            detail_rec = pywt.waverec(rec_coeff_list, 'haar', mode='periodization')
+            detail_rec = detail_rec[:len(abs_detail_sum)]
+        except ValueError as err:
+            raise RuntimeError(f"pywt.waverec failed for D_{j_level}: {err}")
+
+        abs_detail_sum += np.abs(detail_rec)
+        detail_reconstructed_series[i_level][j_level] = detail_rec
+
+        # ── Plot cumulative price vs. reconstructed detail D_j ──
+        detail_rec_series = pd.Series(detail_rec, index=cumulative_prices.index,
+                                      name=f"Detail_D{j_level}")
+        file_path = plot_two_axis(
             primary_series=cumulative_prices,
-            secondary_series=detail_reconstructed_pd_series,
-            primary_label="Precios Acumulados",
-            secondary_label=f"Detalle D_{j_detail_level} (de Retornos Log.)",
-            primary_ylabel="Precio Acumulado",
-            secondary_ylabel=f"Amplitud Detalle D_{j_detail_level}",
-            title=f"Precio Acumulado vs. Detalle D_{j_detail_level} Reconstruido",
-            filename=f"detail_D{j_detail_level}_reconstructed_for_H{i_h_level}.png", # Nombre más específico
+            secondary_series=detail_rec_series,
+            primary_label="Cumulative Price",
+            secondary_label=f"Detail D{j_level} (from log returns)",
+            primary_ylabel="Cumulative Price",
+            secondary_ylabel=f"Amplitude of Detail D{j_level}",
+            title=f"Cumulative Price vs. Reconstructed Detail D{j_level}",
+            filename=f"detail_D{j_level}_reconstructed_for_H{i_level}.png",
             secondary_color="red"
         )
-        print(f"  Gráfico de D_{j_detail_level} guardado en: {file_detalle_path}")
+        print(f"  Plot saved to: {file_path}")
 
-    # Visualizar suma de detalles absolutos (para H_i) vs Precios Acumulados
-    # Lo que se grafica es details_sum (de retornos) desplazado por la media de los precios, en un segundo eje.
-    details_sum_pd_series = pd.Series(details_sum, index=cumulative_prices.index, name=f"SumaAbsDetalles_H{i_h_level}")
-    file_sum_path = plot_two_axis(
+    # ── Plot cumulative price vs. Σ|D_j| (up to j = i_level) ──
+    abs_detail_sum_series = pd.Series(abs_detail_sum, index=cumulative_prices.index,
+                                      name=f"AbsDetailSum_H{i_level}")
+    file_path = plot_two_axis(
         primary_series=cumulative_prices,
-        # secondary_series=pd.Series(details_sum + cumulative_prices.mean(), index=cumulative_prices.index), # Esto mezcla escalas
-        secondary_series=details_sum_pd_series, # Graficar la suma de detalles directamente
-        primary_label="Precios Acumulados",
-        secondary_label=f"Suma |D_j| hasta j={i_h_level} (para H_{i_h_level})",
-        primary_ylabel="Precio Acumulado",
-        secondary_ylabel=f"Suma Absoluta Detalles",
-        title=f"Precio Acumulado vs. Suma Detalles Absolutos para H_{i_h_level}",
-        filename=f"sum_abs_details_for_H{i_h_level}.png",
+        secondary_series=abs_detail_sum_series,
+        primary_label="Cumulative Price",
+        secondary_label=f"Sum |D_j| up to j={i_level} (for H_{i_level})",
+        primary_ylabel="Cumulative Price",
+        secondary_ylabel="Absolute sum of details",
+        title=f"Cumulative Price vs. Absolute Detail Sum for H_{i_level}",
+        filename=f"sum_abs_details_for_H{i_level}.png",
         secondary_color="green"
     )
-    print(f"  Gráfico de Suma Detalles para H_{i_h_level} guardado en: {file_sum_path}")
+    print(f"  Plot saved to: {file_path}")
 
-    # Reconstruir aproximación A_L (usando cA_L = coeffs[0])
-    coeff_list_approx_reconstruction = [coeffs[0]] # Usar el cA_L original
-    for k_detail_idx in range(1, len(coeffs)): # Para todos los coeficientes de detalle cD_L, ..., cD_1
-        coeff_list_approx_reconstruction.append(np.zeros_like(coeffs[k_detail_idx])) # Ceros para todos los detalles
-    
-    approx = pywt.waverec(coeff_list_approx_reconstruction, 'haar', mode='periodization')
-    approx = approx[:len(details_sum)] # Ajustar longitud
-    
-    # Evitar división por cero
-    approx = np.where(approx == 0, 1e-10, approx)
-    H_series[i_h_level] = details_sum / approx
-    print(f"  H_{i_h_level} calculado, longitud: {len(H_series[i_h_level])}")
+    # ------- Construct approximation A_L (all details → 0) -------
+    approx_coeff_list = [coeffs[0]] + [np.zeros_like(c) for c in coeffs[1:]]
+    approx = pywt.waverec(approx_coeff_list, 'haar', mode='periodization')
+    approx = approx[:len(abs_detail_sum)]
+    approx = np.where(approx == 0, 1e-10, approx)            # avoid /0
 
-# Plot H_series todas juntas
-plt.figure(figsize=(12, 6))
-for i_h_level_plot in range(1, level + 1):
-    plt.plot(df_log_ret.index, H_series[i_h_level_plot], label=f'$H_{i_h_level_plot}(t)$')
-plt.xlabel('Fecha')
+    # ------- Compute H_i(t) = Σ|D_j| / A_L -------
+    H_series[i_level] = abs_detail_sum / approx
+    print(f"  H_{i_level} computed, length: {len(H_series[i_level])}")
+
+# ---------- Plot all H_i(t) curves together ----------
+plt.figure(figsize=(14, 7))
+for i_level in range(1, level + 1):
+    plt.plot(df_log_ret.index, H_series[i_level], label=f'$H_{i_level}(t)$')
+
+plt.title('$H_i(t)$ across detail aggregation levels')
+plt.xlabel('Date')
 plt.ylabel('$H_i(t)$')
-plt.title('$H_i(t)$ para cada Nivel de Agregación de Detalles')
-plt.legend()
+plt.legend(title='Aggregation level', loc='upper right')
+plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('plots/H_series_all_levels.png')
-print("\nGráfico de todas las H_series guardado en: plots/H_series_all_levels.png")
+plt.savefig(f'plots/H_series_all_levels_{ticker_name}.png')
+print(f"\nPlot of all H_series saved to: plots/H_series_all_levels_{ticker_name}.png")
 plt.show()
 
 
@@ -230,8 +247,8 @@ plt.ylabel('Energía Móvil de $H_i(t)$')
 plt.title('Energía Móvil de $H_i(t)$ para cada Nivel (Ventana 30 días)')
 plt.legend()
 plt.tight_layout()
-plt.savefig('plots/Energy_series_all_levels.png')
-print("Gráfico de todas las Energy_series guardado en: plots/Energy_series_all_levels.png")
+plt.savefig(f'plots/Energy_series_all_levels_{ticker_name}.png')
+print(f"Gráfico de todas las Energy_series guardado en: plots/Energy_series_all_levels_{ticker_name}.png")
 plt.show()
 
 # Paso 5: Reducción de ruido (threshold_energy_retain % de energía retenida)
@@ -316,8 +333,8 @@ if level_to_plot_denoising in H_series and level_to_plot_denoising in denoised_s
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(f'plots/H{level_to_plot_denoising}_vs_denoised.png')
-    print(f"\nGráfico de H_{level_to_plot_denoising} y su versión denoised guardado en: plots/H{level_to_plot_denoising}_vs_denoised.png")
+    plt.savefig(f'plots/H{level_to_plot_denoising}_vs_denoised_{ticker_name}.png')
+    print(f"\nGráfico de H_{level_to_plot_denoising} y su versión denoised guardado en: plots/H{level_to_plot_denoising}_vs_denoised_{ticker_name}.png")
     plt.show()
 
 # --- Plot de todas las Denoised H_series (similar a p.24 del PDF) ---
@@ -330,8 +347,8 @@ plt.ylabel('Amplitud Denoised $H_i(t)$')
 plt.title(f'Denoised $H_i(t)$ para cada Nivel ({threshold_energy_retain*100}% Energía Retenida)')
 plt.legend()
 plt.tight_layout()
-plt.savefig('plots/denoised_H_series_all_levels.png')
-print("Gráfico de todas las Denoised H_series guardado en: plots/denoised_H_series_all_levels.png")
+plt.savefig(f'plots/denoised_H_series_all_levels_{ticker_name}.png')
+print(f"Gráfico de todas las Denoised H_series guardado en: plots/denoised_H_series_all_levels_{ticker_name}.png")
 plt.show()
 
 
@@ -489,9 +506,9 @@ if handles: # Solo mostrar leyenda si hay algo que etiquetar
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 plt.tight_layout()
-plt.savefig(f'plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings.png')
+plt.savefig(f'plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings_{ticker_name}.png')
 plt.show()
-print(f"Gráfico de precios con alertas H_{level_to_plot_warnings} guardado en: plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings.png")
+print(f"Gráfico de precios con alertas H_{level_to_plot_warnings} guardado en: plots/cumulative_prices_with_H{level_to_plot_warnings}_warnings_{ticker_name}.png")
 
 
 # --- Plot de Frecuencia de Fechas Críticas Detectadas (similar a p.26 del PDF) ---
@@ -552,8 +569,8 @@ if handles_scatter:
 plt.ylim(bottom=0)
 plt.grid(True, linestyle=':', alpha=0.6)
 plt.tight_layout(rect=[0, 0, 0.85, 1]) # Ajustar para leyenda fuera
-plt.savefig('plots/frequency_critical_dates_robustness_check.png', bbox_inches='tight')
-print("\nGráfico de frecuencia de robustez de fechas críticas guardado en: plots/frequency_critical_dates_robustness_check.png")
+plt.savefig(f'plots/frequency_critical_dates_robustness_check_{ticker_name}.png', bbox_inches='tight')
+print(f"\nGráfico de frecuencia de robustez de fechas críticas guardado en: plots/frequency_critical_dates_robustness_check_{ticker_name}.png")
 plt.show()
 
 print("\n--- Análisis Completado ---")
