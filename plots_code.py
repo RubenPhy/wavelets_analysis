@@ -1,98 +1,115 @@
 import os
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 def plot_two_axis(
     primary_series,
     secondary_series,
     *,
-    primary_label="Serie primaria",
-    secondary_label="Serie secundaria",
+    primary_label="Primary series",
+    secondary_label="Secondary series",
     primary_ylabel=None,
     secondary_ylabel=None,
     title=None,
     output_dir="plots",
     filename="plot.png",
     figsize=(12, 6),
-    secondary_color="red",
+    secondary_color=None,      # ← None = se elige automáticamente
+    secondary_alpha=0.65,      # ← transparencia suave
+    primary_alpha=0.50,        # ← transparencia de la serie primaria
     show=True
 ):
     """
-    Dibuja dos series (mismo índice) con ejes y independientes.
+    Plot two time-aligned series with independent y-axes without letting the
+    secondary line dominate the primary one.
 
     Parameters
     ----------
     primary_series : pandas.Series
-        Serie que se muestra en el eje y primario.
     secondary_series : pandas.Series
-        Serie que se muestra en el eje y secundario.
-    primary_label : str, default "Serie primaria"
-        Etiqueta de la serie primaria en la leyenda.
-    secondary_label : str, default "Serie secundaria"
-        Etiqueta de la serie secundaria en la leyenda.
-    primary_ylabel : str or None
-        Texto para el eje y primario.  Si es None -> usa primary_label.
-    secondary_ylabel : str or None
-        Texto para el eje y secundario. Si es None -> usa secondary_label.
+    primary_label, secondary_label : str
+        Legend labels for each series.
+    primary_ylabel, secondary_ylabel : str or None
+        Axis labels (falls back to *label* if None).
+    secondary_color : str or None, default None
+        If None, picks a muted colour from Seaborn (softer than raw “red/green”).
+    secondary_alpha : float, default 0.65
+        Transparency of the secondary line (0 = invisible, 1 = opaque).
+    primary_alpha : float, default 0.50
+        Transparency of the primary line.
     title : str or None
-        Título del gráfico. Si es None -> se deja sin título.
+        Figure title.
     output_dir : str, default "plots"
-        Carpeta donde se guarda la imagen PNG (se crea si no existe).
+        Folder where the PNG is saved.
     filename : str, default "plot.png"
-        Nombre del archivo dentro de output_dir.
+        File name inside *output_dir*.
     figsize : tuple, default (12, 6)
-        Tamaño de la figura.
-    secondary_color : str, default "red"
-        Color de la serie secundaria.
+        Figure size in inches.
     show : bool, default True
-        Si True, ejecuta plt.show(); si False, cierra la figura tras guardarla.
+        Whether to display the plot (True) or just save it (False).
 
     Returns
     -------
     str
-        Ruta completa del archivo guardado.
+        Full path of the saved PNG.
     """
-    # ── Validaciones básicas ────────────────────────────────────
+    # 1 · Validación básica
     if not primary_series.index.equals(secondary_series.index):
-        raise ValueError("Las dos series deben tener exactamente el mismo índice.")
+        raise ValueError("Both series must share the same DatetimeIndex.")
 
-    # ── Preparar destino ───────────────────────────────────────
+    # 2 · Elegir color pastel si el usuario no fijó uno
+    if secondary_color is None:
+        secondary_color = sns.color_palette("muted")[2]   # azul verdoso suave
+
+    # 3 · Preparar destino
     os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, filename)
 
-    # ── Crear figura y ejes ────────────────────────────────────
+    # 4 · Estilo general Seaborn
+    sns.set_theme(
+        style="darkgrid",
+        rc={
+            "axes.titlesize": 16,
+            "axes.labelsize": 13,
+            "xtick.labelsize": 11,
+            "ytick.labelsize": 11,
+        }
+    )
+
+    # 5 · Crear figura + ejes
     fig, ax1 = plt.subplots(figsize=figsize)
 
-    # Eje y primario
+    #   · Eje primario
     ax1.plot(
         primary_series.index,
         primary_series,
         label=primary_label,
-        alpha=0.5
+        alpha=primary_alpha
     )
     ax1.set_ylabel(primary_ylabel or primary_label)
 
-    # Eje y secundario
+    #   · Eje secundario
     ax2 = ax1.twinx()
     ax2.plot(
         secondary_series.index,
         secondary_series,
         label=secondary_label,
-        color=secondary_color
+        color=secondary_color,
+        alpha=secondary_alpha
     )
     ax2.set_ylabel(secondary_ylabel or secondary_label)
 
-    # Leyenda combinada (handles + labels de ambos ejes)
+    # 6 · Leyenda combinada
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
 
-    # Título y layout
+    # 7 · Título y guardado
     if title:
         plt.title(title)
     plt.tight_layout()
-
-    # Guardar y mostrar
     plt.savefig(file_path)
+
     if show:
         plt.show()
     else:
