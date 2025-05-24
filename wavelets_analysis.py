@@ -3,6 +3,7 @@ import numpy as np
 import pywt
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.lines import Line2D   # para la leyenda “manual”
 from plots_code import plot_two_axis
 
 # —-—-—- Ajustes globales Seaborn —-—-—-
@@ -62,6 +63,62 @@ plt.tight_layout(rect=[0, 0, 1, 0.96])             # deja sitio al título gener
 plt.savefig('plots/wavelet_coefficients_log_returns.png')
 print("Wavelet coefficient plot saved to: plots/wavelet_coefficients_log_returns.png")
 plt.show()
+
+# Visualizar 
+top_pct = 3
+# ---------- Función para localizar fechas extremas ----------
+def extract_extreme_dates(coeffs, level, base_index, top_pct=5):
+    """
+    Devuelve un dict {coef_name: DatetimeIndex} con las fechas cuyas
+    oscilaciones (|coef|) están en el top_pct % más alto.
+    
+    base_index es el índice temporal de la serie original de log-returns.
+    El mapeo coef → fecha es aproximado: j-ésimo coeficiente a nivel k
+    se asocia al momento base_index[j * 2**k].
+    """
+    extreme_dates = {}
+    for i, arr in enumerate(coeffs):
+        if i == 0:                    # Aproximación
+            name   = f'cA{level}'
+            scale  = 2**level
+        else:                         # Detalle
+            k      = level - i + 1
+            name   = f'cD{k}'
+            scale  = 2**k
+        # Umbral p-ésimo
+        thr = np.percentile(np.abs(arr), 100 - top_pct)
+        idx = np.where(np.abs(arr) >= thr)[0]
+        # Mapear a fechas (asegura no salir del rango)
+        pos = np.minimum(idx * scale, len(base_index) - 1)
+        extreme_dates[name] = base_index[pos]
+    return extreme_dates
+
+# Fechas extremas para todos los coeficientes
+extreme_dates = extract_extreme_dates(coeffs, level, df_log_ret.index, top_pct)
+
+# ---------- Plot de precios + líneas verticales ----------
+sns.set_theme(style="darkgrid")
+fig, ax = plt.subplots(figsize=(14, 6))
+ax.plot(cumulative_prices, linewidth=1.2) # o df['CLOSE']
+ax.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations')
+ax.set_ylabel('Price')
+ax.set_xlabel('Date')
+
+# Colores distintos para cada conjunto de líneas
+palette = sns.color_palette('husl', n_colors=len(extreme_dates))
+
+for (coef_name, dates), color in zip(extreme_dates.items(), palette):
+    for date in dates:
+        ax.axvline(date, color=color, linewidth=2.5, linestyle='--', alpha=0.7)  # <-- Más ancho
+
+# Leyenda manual (una entrada por coeficiente)
+handles = [Line2D([0], [0], color=c, lw=3, linestyle='--', label=n)
+           for (n, _), c in zip(extreme_dates.items(), palette)]
+ax.legend(handles=handles, title='Coefficient band', loc='upper left')
+plt.tight_layout()
+plt.savefig('plots/dates_with_highest_coeff.png')
+plt.show()
+
 
 # Paso 3: Calcular H_i(t) para i=1,...,level
 H_series = {}
