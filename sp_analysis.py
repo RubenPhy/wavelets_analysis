@@ -176,9 +176,6 @@ for broad_sector, returns in broad_sector_indices.items():
     results_df[broad_sector] = returns
 results_df.to_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\sector_cumulative_returns.csv')
 
-# Set seaborn style with grid
-sns.set_style("whitegrid")
-
 # Plot the synthetic S&P 500 and broad sector indices
 plt.figure(figsize=(14, 8))
 sns.lineplot(data=synthetic_sp500, label='Synthetic S&P 500', color='black')
@@ -187,10 +184,11 @@ for broad_sector, returns in broad_sector_indices.items():
 plt.title('Synthetic S&P 500 and Broad Sector Cumulative Returns', fontsize=18)
 plt.xlabel('Date', fontsize=14)
 plt.ylabel('Cumulative Returns (%)', fontsize=14)
-plt.gca().yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(xmax=1, decimals=1))
+plt.gca().yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(xmax=1, decimals=0))  # No decimals on y-axis
 plt.legend(fontsize=14)
 plt.tick_params(axis='both', labelsize=14)
 plt.tight_layout()
 # Save the plot
 plt.savefig(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\plots\returns_SP500_and_sectors.png')
 plt.show()
+print("Analysis complete. Results saved to 'sector_cumulative_returns.csv' and plot saved as 'returns_SP500_and_sectors.png'.")
