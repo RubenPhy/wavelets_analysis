@@ -2,7 +2,12 @@ import pandas as pd
 import numpy as np
 import pywt
 import matplotlib.pyplot as plt
+import seaborn as sns
 from plots_code import plot_two_axis
+
+# —-—-—- Ajustes globales Seaborn —-—-—-
+sns.set_theme(style="darkgrid")          # fondo gris con rejilla en gris oscuro
+plt.rcParams.update({"axes.titleweight": "bold"})  # (opcional) negrita en títulos
 
 # --- XXX Comentarios Generales ---
 # 1) Ejes y leyendas: Se ha intentado que sean descriptivos.
@@ -14,24 +19,24 @@ from plots_code import plot_two_axis
 path = 'raw/AAP.N-2012-03-29-2024-03-01.csv'
 df = pd.read_csv(path, index_col='Date', parse_dates=True)
 df['log_return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
-prices = df['log_return'].dropna() 
+df_log_ret = df['log_return'].dropna() 
 
 # Calcular precios acumulados para visualización
 initial_price = df['CLOSE'].dropna().iloc[0]
-cumulative_log_returns = prices.cumsum()
+cumulative_log_returns = df_log_ret.cumsum()
 cumulative_prices = initial_price * np.exp(cumulative_log_returns)
-cumulative_prices = pd.Series(cumulative_prices, index=prices.index, name='Cumulative_Price')
+cumulative_prices = pd.Series(cumulative_prices, index=df_log_ret.index, name='Cumulative_Price')
 
 # Ajustar la longitud a una potencia de 2 para simplificar el análisis wavelet
-n = len(prices)
+n = len(df_log_ret)
 n_adjusted = 2**int(np.log2(n))
-prices = prices.iloc[:n_adjusted]
+df_log_ret = df_log_ret.iloc[:n_adjusted]
 cumulative_prices = cumulative_prices.iloc[:n_adjusted]
-print(f"Longitud de la serie ajustada: {len(prices)}")
+print(f"Longitud de la serie ajustada: {len(df_log_ret)}")
 
 # Paso 2: Descomposición con Haar Wavelets hasta nivel 4
 level = 4
-coeffs = pywt.wavedec(prices.values, 'haar', level=level, mode='periodization') # coeffs = [cA_L, cD_L, ..., cD_1]
+coeffs = pywt.wavedec(df_log_ret.values, 'haar', level=level, mode='periodization') # coeffs = [cA_L, cD_L, ..., cD_1]
 print("Longitudes de los coeficientes:")
 # Los coeficientes son [cA_level, cD_level, cD_{level-1}, ..., cD_1]
 # Por lo tanto, coeffs[0] es cA4, coeffs[1] es cD4, coeffs[2] es cD3, coeffs[3] es cD2, coeffs[4] es cD1.
@@ -41,17 +46,21 @@ for i_coeff in range(1, len(coeffs)):
 
 # Visualizar coeficientes wavelet
 fig, axs = plt.subplots(len(coeffs), 1, figsize=(12, 10), sharex=False)
-axs[0].plot(coeffs[0], label=f'cA{level}')
-axs[0].set_title(f'Coeficientes de Aproximación (cA{level})')
-axs[0].legend(loc='upper right')
+# ­­­­-------------------------- cA (aproximación) ---------------------------­
+axs[0].plot(coeffs[0])
+axs[0].set_title(f'Approximation Coefficients (cA{level})', fontsize=18)
+axs[0].tick_params(axis='both', labelsize=14)
+# ­­­­-------------------------- cD (detalle) ---------------------------­
 for i_coeff in range(1, len(coeffs)):
-    axs[i_coeff].plot(coeffs[i_coeff], label=f'cD{level - i_coeff + 1}')
-    axs[i_coeff].set_title(f'Coeficientes de Detalle (cD{level - i_coeff + 1})')
-    axs[i_coeff].legend(loc='upper right')
-fig.suptitle('Coeficientes Wavelet de los Retornos Logarítmicos', fontsize=16)
-plt.tight_layout(rect=[0, 0, 1, 0.96]) # Ajustar para el título general
+    axs[i_coeff].plot(coeffs[i_coeff])
+    axs[i_coeff].set_title(f'Detail Coefficients (cD{level - i_coeff + 1})', fontsize=18)
+    axs[i_coeff].tick_params(axis='both', labelsize=14)
+# ­­­­-------------------------- Título general y exportación ------------------------­
+fig.suptitle('Wavelet Coefficients of Log Returns', fontsize=22)
+plt.tight_layout(rect=[0, 0, 1, 0.96])             # deja sitio al título general
+# Guardar y mostrar
 plt.savefig('plots/wavelet_coefficients_log_returns.png')
-print("Gráfico de coeficientes wavelet guardado en: plots/wavelet_coefficients_log_returns.png")
+print("Wavelet coefficient plot saved to: plots/wavelet_coefficients_log_returns.png")
 plt.show()
 
 # Paso 3: Calcular H_i(t) para i=1,...,level
@@ -59,7 +68,7 @@ H_series = {}
 detail_reconstructed_series = {}  # Almacenar detail_reconstructed para cada nivel
 print("\n--- Iniciando Cálculo de H_i(t) y Reconstrucción de Detalles ---")
 for i_h_level in range(1, level + 1): # i_h_level es el 'i' en H_i (nivel de agregación para H)
-    details_sum = np.zeros_like(prices.values, dtype=float) # Usar .values para asegurar array numpy
+    details_sum = np.zeros_like(df_log_ret.values, dtype=float) # Usar .values para asegurar array numpy
     detail_reconstructed_series[i_h_level] = {}
     print(f"\nCalculando para H_{i_h_level}:")
     for j_detail_level in range(1, i_h_level + 1): # j_detail_level es el 'j' en D_j (nivel del detalle individual)
@@ -132,7 +141,7 @@ for i_h_level in range(1, level + 1): # i_h_level es el 'i' en H_i (nivel de agr
 # Plot H_series todas juntas
 plt.figure(figsize=(12, 6))
 for i_h_level_plot in range(1, level + 1):
-    plt.plot(prices.index, H_series[i_h_level_plot], label=f'$H_{i_h_level_plot}(t)$')
+    plt.plot(df_log_ret.index, H_series[i_h_level_plot], label=f'$H_{i_h_level_plot}(t)$')
 plt.xlabel('Fecha')
 plt.ylabel('$H_i(t)$')
 plt.title('$H_i(t)$ para cada Nivel de Agregación de Detalles')
@@ -150,7 +159,7 @@ energy_series = {}
 for i_h_level in range(1, level + 1):
     # Asegurarse que H_series[i_h_level] es un array 1D para pd.Series
     h_series_array = np.asarray(H_series[i_h_level])
-    energy_series[i_h_level] = pd.Series(h_series_array, index=prices.index).rolling(
+    energy_series[i_h_level] = pd.Series(h_series_array, index=df_log_ret.index).rolling(
         window=window_size, min_periods=1
     ).apply(lambda x: np.sum(x**2), raw=True).values
     print(f"Energía móvil H_{i_h_level}, longitud: {len(energy_series[i_h_level])}")
@@ -158,7 +167,7 @@ for i_h_level in range(1, level + 1):
 # Plot Energy_series todas juntas
 plt.figure(figsize=(12, 6))
 for i_h_level_plot in range(1, level + 1):
-    plt.plot(prices.index, energy_series[i_h_level_plot], label=f'$Energy(H_{i_h_level_plot})$')
+    plt.plot(df_log_ret.index, energy_series[i_h_level_plot], label=f'$Energy(H_{i_h_level_plot})$')
 plt.xlabel('Fecha')
 plt.ylabel('Energía Móvil de $H_i(t)$')
 plt.title('Energía Móvil de $H_i(t)$ para cada Nivel (Ventana 30 días)')
@@ -237,13 +246,13 @@ level_to_plot_denoising = 1 # Elige un nivel, por ejemplo H_1
 if level_to_plot_denoising in H_series and level_to_plot_denoising in denoised_series:
     plt.figure(figsize=(12, 8))
     plt.subplot(2, 1, 1)
-    plt.plot(prices.index, H_series[level_to_plot_denoising], label=f'$H_{level_to_plot_denoising}$ (Observada)')
+    plt.plot(df_log_ret.index, H_series[level_to_plot_denoising], label=f'$H_{level_to_plot_denoising}$ (Observada)')
     plt.title(f'$H_{level_to_plot_denoising}(t)$ (Observada)')
     plt.ylabel('Amplitud')
     plt.legend()
 
     plt.subplot(2, 1, 2)
-    plt.plot(prices.index, denoised_series[level_to_plot_denoising], label=f'Denoised $H_{level_to_plot_denoising}$', color='orange')
+    plt.plot(df_log_ret.index, denoised_series[level_to_plot_denoising], label=f'Denoised $H_{level_to_plot_denoising}$', color='orange')
     plt.title(f'Denoised $H_{level_to_plot_denoising}(t)$ ({threshold_energy_retain*100}% Energía Retenida)')
     plt.xlabel('Fecha')
     plt.ylabel('Amplitud')
@@ -258,7 +267,7 @@ if level_to_plot_denoising in H_series and level_to_plot_denoising in denoised_s
 plt.figure(figsize=(12, 6))
 for i_plot in range(1, level + 1):
     if i_plot in denoised_series:
-        plt.plot(prices.index[:len(denoised_series[i_plot])], denoised_series[i_plot], label=f'Denoised $H_{i_plot}$')
+        plt.plot(df_log_ret.index[:len(denoised_series[i_plot])], denoised_series[i_plot], label=f'Denoised $H_{i_plot}$')
 plt.xlabel('Fecha')
 plt.ylabel('Amplitud Denoised $H_i(t)$')
 plt.title(f'Denoised $H_i(t)$ para cada Nivel ({threshold_energy_retain*100}% Energía Retenida)')
@@ -274,7 +283,7 @@ print("\n--- Iniciando Identificación de Fechas Críticas y Sistema de Alerta -
 critical_dates = {}
 for i_h_level in range(1, level + 1):
     critical_indices = np.where(np.abs(denoised_series[i_h_level]) > 1e-10)[0] # Tolerancia para ceros
-    critical_dates[i_h_level] = prices.index[critical_indices]
+    critical_dates[i_h_level] = df_log_ret.index[critical_indices]
     print(f"H_{i_h_level} - Fechas críticas iniciales identificadas: {len(critical_dates[i_h_level])}")
 
 # --- Modificación del Paso 6 para almacenar contadores ---
@@ -287,40 +296,40 @@ for i_h_level in range(1, level + 1):
     if not critical_dates[i_h_level].empty: # Solo procesar si hay fechas críticas
         for crit_date_idx, crit_date in enumerate(critical_dates[i_h_level]):
             # print(f"  Verificando robustez de fecha crítica {crit_date_idx+1}/{len(critical_dates[i_h_level])}: {crit_date.date()}")
-            original_series_idx = prices.index.get_loc(crit_date)
+            original_series_idx = df_log_ret.index.get_loc(crit_date)
             counter = 0 # Inicializa un contador para esta fecha crítica específica.
 
             # Este bucle simula "terminar" la serie de precios en diferentes puntos 'x'
             # alrededor de la fecha crítica 'crit_idx'.
             # Se define una ventana de 31 días: 15 días antes de crit_idx, crit_idx mismo, y 15 días después.
             # max(0, crit_idx - 15): asegura que no empecemos antes del inicio de la serie.
-            # min(len(prices), crit_idx + 16): asegura que no nos pasemos del final de la serie. 
+            # min(len(df_log_ret), crit_idx + 16): asegura que no nos pasemos del final de la serie. 
             # Bucle de simulación para robustez
-            for x_sim_idx in range(max(0, original_series_idx - 15), min(len(prices), original_series_idx + 16)):
-                truncated = prices.iloc[:x_sim_idx+1].values
+            for x_sim_idx in range(max(0, original_series_idx - 15), min(len(df_log_ret), original_series_idx + 16)):
+                truncated = df_log_ret.iloc[:x_sim_idx+1].values
                 if not truncated.size: continue # Saltar si truncado está vacío
                 # -- Inicio de la Simulación para el punto 'x' --
                 # El objetivo es ver si la fecha 'crit_date' todavía se detectaría como
                 # anómala si solo hubiéramos tenido datos hasta el día 'x'.
 
                 # Crear serie modificada
-                # truncated: Toma la serie de retornos logarítmicos ('prices') desde el inicio hasta el día 'x'.                
+                # truncated: Toma la serie de retornos logarítmicos ('df_log_ret') desde el inicio hasta el día 'x'.                
                 flipped = truncated[::-1]
-                # modified: Crea una nueva serie de longitud igual a la 'prices' original.
+                # modified: Crea una nueva serie de longitud igual a la 'df_log_ret' original.
                 # Lo hace concatenando la 'truncated' y su 'flipped' repetidamente.
                 # Esto es una técnica para extender artificialmente la serie truncada para el análisis wavelet,
                 # tratando de minimizar los efectos de borde y mantener cierta estructura estadística.
-                # (len(prices) // (2 * (x+1)) + 1): Calcula cuántas veces se necesita repetir el patrón [truncated, flipped].
+                # (len(df_log_ret) // (2 * (x+1)) + 1): Calcula cuántas veces se necesita repetir el patrón [truncated, flipped].
 
                 # Asegurar que el patrón para concatenar no sea vacío
                 pattern_len = 2 * len(truncated)
                 if pattern_len == 0: continue
 
-                num_repeats = (len(prices) // pattern_len) + 1
-                modified = np.concatenate([truncated, flipped] * num_repeats)[:len(prices)]
+                num_repeats = (len(df_log_ret) // pattern_len) + 1
+                modified = np.concatenate([truncated, flipped] * num_repeats)[:len(df_log_ret)]
                 
                 coeffs_mod = pywt.wavedec(modified, 'haar', level=level, mode='periodization')
-                details_sum_mod = np.zeros_like(prices.values, dtype=float)
+                details_sum_mod = np.zeros_like(df_log_ret.values, dtype=float)
                 
                 for j_detail_level in range(1, i_h_level + 1):
                     idx_Dj_in_coeffs_mod = level - j_detail_level + 1
@@ -439,10 +448,10 @@ crisis_dates_in_data = {
     "Lehman": pd.to_datetime("2008-09-15"), # Probablemente no en el rango de AAP.N
     "COVID19": pd.to_datetime("2020-03-13")  # Podría estar en el rango
 }
-# Filtrar crisis que caen dentro del rango de fechas de 'prices'
+# Filtrar crisis que caen dentro del rango de fechas de 'df_log_ret'
 valid_crisis_dates = {
     name: dt for name, dt in crisis_dates_in_data.items() 
-    if prices.index.min() <= dt <= prices.index.max()
+    if df_log_ret.index.min() <= dt <= df_log_ret.index.max()
 }
 
 for i_scatter in range(1, level + 1):
