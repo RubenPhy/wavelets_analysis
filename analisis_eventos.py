@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import seaborn as sns
 from wavelets_analysis import extract_extreme_dates  # Importamos la función necesaria
 
 events = {
@@ -107,48 +108,72 @@ events = {
 
 def plot_frequency_critical_dates(extreme_dates, ticker_name, crisis_dates=None):
     """
-    Genera un scatter plot de la frecuencia de fechas críticas detectadas, con líneas de eventos de crisis y umbral.
+    Genera un scatter plot de la frecuencia de fechas críticas detectadas, con líneas de eventos de crisis.
 
     Parameters:
     - extreme_dates (dict): Diccionario de fechas extremas por nivel (de extract_extreme_dates).
-    - ticker_name (str): Nombre del ticker para el nombre del archivo.
-    - crisis_dates (dict, optional): Diccionario de fechas de crisis {nombre: fecha}.
+    - ticker_name (str): Nombre del ticker para incluir en el título y nombre del archivo.
+    - crisis_dates (dict, optional): Diccionario de fechas de crisis {fecha: explicación}.
     """
     # Preparar datos para el scatter plot
     all_dates = []
+    date_labels = []
     for coef_name, dates in extreme_dates.items():
-        all_dates.extend(dates)
+        # Solo consideramos los detalles (cD1, cD2, ..., cD4), ignoramos cA
+        if 'cD' in coef_name:
+            all_dates.extend(dates)
+            # Añadimos la etiqueta del detalle (por ejemplo, 'cD1', 'cD2', etc.)
+            date_labels.extend([coef_name] * len(dates))
     
     # Contar frecuencias de fechas (considerando todas las bandas de coeficientes)
     date_counts = pd.Series(all_dates).value_counts()
     dates = date_counts.index
     frequencies = date_counts.values
     
+    # Crear un diccionario para mapear fechas a sus etiquetas de detalle
+    date_to_labels = {}
+    for date, label in zip(all_dates, date_labels):
+        if date not in date_to_labels:
+            date_to_labels[date] = []
+        date_to_labels[date].append(label)
+    
     # Configurar el gráfico
     plt.figure(figsize=(10, 6))
     
-    # Scatter plot de las fechas críticas
-    plt.scatter(dates, frequencies, color='red', s=50, alpha=0.6, label='Critical Dates')
+    # Definir colores para cada detalle (cD1 a cD4)
+    palette = sns.color_palette('husl', n_colors=4)  # Paleta con 4 colores distintos
+    detail_colors = {f'cD{i+1}': palette[i] for i in range(4)}  # cD1, cD2, cD3, cD4
     
-    # Línea horizontal del umbral (y=10)
-    plt.axhline(y=10, color='black', linestyle='--', linewidth=1.2, label='Threshold y=10')
+    # Scatter plot con colores según el detalle
+    for date, freq in zip(dates, frequencies):
+        labels = date_to_labels.get(date, [])
+        # Si una fecha pertenece a múltiples detalles, usamos el color del detalle más bajo
+        if labels:
+            lowest_detail = min(labels)  # Por ejemplo, si está en cD1 y cD2, usamos cD1
+            color = detail_colors[lowest_detail]
+            plt.scatter(date, freq, color=color, s=50, alpha=0.6)
     
-    # Líneas verticales para eventos de crisis
+    # Líneas verticales para eventos de crisis con texto en la línea
     if crisis_dates:
-        for crisis_name, crisis_date in crisis_dates.items():
-            plt.axvline(x=crisis_date, color='blue', linestyle='--', linewidth=1.2, 
-                        label=f'{crisis_name} Crisis')
+        for crisis_date, explanation in crisis_dates.items():
+            plt.axvline(x=crisis_date, color='blue', linestyle='--', linewidth=1.2)
+            # Añadir texto sobre la línea vertical
+            plt.text(crisis_date, plt.ylim()[1] * 0.95, explanation, rotation=90, 
+                     verticalalignment='top', horizontalalignment='right', 
+                     color='black', fontsize=16)
     
     # Configurar etiquetas y título
-    plt.title('Frequency of detected critical dates', fontsize=14)
+    plt.title(f'Frequency of Detected Critical Dates - {ticker_name}', fontsize=14)
     plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Frequency', fontsize=12)
+    # El eje y representa el número de veces que una fecha fue identificada como crítica
+    # en las diferentes bandas de coeficientes wavelet (cD1, ..., cD4).
+    plt.ylabel('Frequency (Number of Detections Across Wavelet Bands)', fontsize=12)
     plt.grid(True, linestyle='--', alpha=0.7)
     
-    # Ajustar leyenda para evitar duplicados
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=10)
+    # Crear leyenda para los detalles
+    handles = [plt.scatter([], [], color=detail_colors[f'cD{i+1}'], s=50, alpha=0.6, label=f'Detail {i+1}') 
+               for i in range(4)]
+    plt.legend(handles=handles, loc='upper right', fontsize=10)
     
     # Ajustar límites y diseño
     plt.ylim(bottom=0)
@@ -181,17 +206,17 @@ if __name__ == "__main__":
     top_pct = 3
     extreme_dates = extract_extreme_dates(coeffs, level, df_log_ret.index, top_pct)
     
-    # Definir fechas de crisis
+    # Definir fechas de crisis (formato: fecha -> explicación)
     crisis_dates = {
-        "2000 Crisis": pd.to_datetime("2000-01-01"),
-        "2018 Crisis": pd.to_datetime("2018-01-01"),
-        "2020 Crisis": pd.to_datetime("2020-01-01")
+        pd.to_datetime("2000-01-01"): "2000 Crisis",
+        pd.to_datetime("2018-01-01"): "2018 Crisis",
+        pd.to_datetime("2020-01-01"): "2020 Crisis"
     }
     
     # Filtrar fechas de crisis que estén dentro del rango de datos
     valid_crisis_dates = {
-        name: dt for name, dt in crisis_dates.items()
-        if df_log_ret.index.min() <= dt <= df_log_ret.index.max()
+        date: desc for date, desc in crisis_dates.items()
+        if df_log_ret.index.min() <= date <= df_log_ret.index.max()
     }
     
     # Generar el gráfico
