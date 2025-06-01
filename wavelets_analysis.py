@@ -125,6 +125,75 @@ def plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct):
     plt.savefig(f'plots/dates_with_highest_coeff_{ticker_name}.png')
     plt.close()
 
+def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, base_index):
+    """
+    Grafica precios acumulados con líneas verticales en fechas extremas y subplots de coeficientes wavelet con umbrales.
+
+    Parameters:
+    - cumulative_prices (pd.Series): Precios acumulados.
+    - coeffs (list): Coeficientes wavelet [cA_level, cD_level, ..., cD_1].
+    - level (int): Nivel máximo de descomposición.
+    - ticker_name (str): Nombre del ticker.
+    - top_pct (float): Porcentaje superior para umbrales.
+    - base_index (pd.Index): Índice temporal de la serie original.
+    """
+    # Número de subplots: 1 para precios + número de niveles de detalles
+    n_details = level  # cD1 a cD_level
+    fig, axes = plt.subplots(n_details + 1, 1, figsize=(14, 4 * (n_details + 1)), sharex=True)
+    
+    # Graficar precios acumulados
+    ax_prices = axes[0]
+    ax_prices.plot(cumulative_prices, linewidth=1.2)
+    ax_prices.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations', fontsize=18)
+    ax_prices.set_ylabel('Price', fontsize=14)
+    ax_prices.tick_params(axis='both', labelsize=12)
+    
+    # Añadir líneas verticales para fechas extremas (calculadas de coeffs)
+    extreme_dates = {}
+    for k in range(1, level + 1):
+        arr = coeffs[level - k + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
+        scale = 2**k
+        thr = np.percentile(np.abs(arr), 100 - top_pct)
+        ind = np.where(np.abs(arr) >= thr)[0]
+        extreme_dates[f'cD{k}'] = base_index[::scale][ind]
+    
+    palette = sns.color_palette('husl', n_colors=len(extreme_dates))
+    for (coef_name, dates), color in zip(extreme_dates.items(), palette):
+        for date in dates:
+            ax_prices.axvline(date, color=color, linewidth=1.0, linestyle='--', alpha=0.7)
+    
+    # Leyenda para precios
+    handles = [Line2D([0], [0], color=c, lw=3, linestyle='--', label=n) 
+               for (n, _), c in zip(extreme_dates.items(), palette)]
+    ax_prices.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=12, title_fontsize=13)
+    
+    # Graficar coeficientes wavelet con umbrales
+    for i in range(1, n_details + 1):  # cD1 a cD_level
+        ax = axes[i]
+        coef_name = f'cD{i}'
+        arr = coeffs[level - i + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
+        scale = 2**i
+        thr = np.percentile(np.abs(arr), 100 - top_pct)
+        
+        # Crear índice de fechas para los coeficientes
+        coef_dates = base_index[::scale][:len(arr)]
+        
+        # Graficar coeficientes
+        ax.plot(coef_dates, arr, label=coef_name, color='blue')
+        ax.axhline(y=thr, color='red', linestyle='--', label='Threshold')
+        ax.axhline(y=-thr, color='red', linestyle='--')
+        ax.set_title(f'Detail Coefficients {coef_name} with Threshold', fontsize=14)
+        ax.set_ylabel('Coefficient Value', fontsize=12)
+        ax.tick_params(axis='both', labelsize=10)
+        ax.legend(loc='upper right', fontsize=10)
+    
+    # Ajustar etiquetas y título
+    axes[-1].set_xlabel('Date', fontsize=14)
+    fig.suptitle(f'Cumulative Price and Wavelet Coefficients for {ticker_name}', fontsize=20)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}.png')
+    plt.close()
+
 def compute_H_series(log_returns, coeffs, level):
     """
     Calcula las series H_i(t) para diferentes niveles.
@@ -209,7 +278,7 @@ def plot_H_series_with_details(H_series, detail_reconstructed_series, cumulative
         plt.savefig(f'plots/H_{i}_with_details_and_price_{ticker_name}.png')
         plt.close()
 
-def compute_mobile_energy(H_series, window_size=30):
+def compute_mobile_energy(H_series, window_size=16):
     """
     Calcula la energía móvil para cada H_i(t).
 
@@ -475,6 +544,7 @@ if __name__ == "__main__":
     plot_wavelet_coefficients(coeffs, level, ticker_name)
     extreme_dates = extract_extreme_dates(coeffs, level, log_returns.index, top_pct)
     plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
+    plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, log_returns.index)
     H_series, detail_series = compute_H_series(log_returns, coeffs, level)
     plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
     energy_series = compute_mobile_energy(H_series, window_size)
