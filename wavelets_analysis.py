@@ -132,31 +132,31 @@ plt.close()
 
 # Paso 3: Calcular H_i(t) para i=1,...,level
 sns.set_theme(
-    style="darkgrid",
     rc={
-        "axes.titlesize": 18,
+        "axes.titlesize": 22,
         "axes.labelsize": 14,
-        "xtick.labelsize": 12,
-        "ytick.labelsize": 12,
+        "xtick.labelsize": 14,
+        "ytick.labelsize": 14,
     }
 )
+
+# Initialize dictionaries for H_i and detail reconstructions
 H_series = {}
-detail_reconstructed_series = {}  # Almacenar detail_reconstructed para cada nivel
+detail_reconstructed_series = {}  # Store detail_reconstructed for each level
 print("\n--- Starting H_i(t) computation and detail reconstruction ---")
-for i_level in range(1, level + 1):              # i_level is the i in H_i
+for i_level in range(1, level + 1):  # i_level is the i in H_i
     abs_detail_sum = np.zeros_like(df_log_ret.values, dtype=float)
     detail_reconstructed_series[i_level] = {}
     print(f"\nComputing H_{i_level} …")
 
     # ------- Reconstruct each detail D_j and accumulate its |·| -------
-    for j_level in range(1, i_level + 1):        # j_level is the j in D_j
-        idx_coeff = level - j_level + 1          # position of cD_j in coeffs
+    for j_level in range(1, i_level + 1):  # j_level is the j in D_j
+        idx_coeff = level - j_level + 1  # Position of cD_j in coeffs
 
         # Build a coefficient list with only cD_j kept, others → 0
-        rec_coeff_list = [np.zeros_like(coeffs[0])]          # null cA_L
+        rec_coeff_list = [np.zeros_like(coeffs[0])]  # Null cA_L
         for idx in range(1, len(coeffs)):
-            rec_coeff_list.append(coeffs[idx] if idx == idx_coeff
-                                   else np.zeros_like(coeffs[idx]))
+            rec_coeff_list.append(coeffs[idx] if idx == idx_coeff else np.zeros_like(coeffs[idx]))
 
         # Reconstruct time-domain detail D_j(t)
         try:
@@ -178,9 +178,10 @@ for i_level in range(1, level + 1):              # i_level is the i in H_i
             secondary_label=f"Detail D{j_level} (from log returns)",
             primary_ylabel="Cumulative Price",
             secondary_ylabel=f"Amplitude of Detail D{j_level}",
-            title=f"Cumulative Price vs. Reconstructed Detail D{j_level}",
-            filename=f"detail_D{j_level}_reconstructed_for_H{i_level}.png",
-            secondary_color="red"
+            title=f"Cumulative Price vs. Reconstructed Detail D{j_level} for H{i_level}",
+            filename=f"detail_D{j_level}_reconstructed_for_H{i_level}_{ticker_name}.png",
+            secondary_color="red",
+            show=False
         )
         print(f"  Plot saved to: {file_path}")
 
@@ -195,8 +196,9 @@ for i_level in range(1, level + 1):              # i_level is the i in H_i
         primary_ylabel="Cumulative Price",
         secondary_ylabel="Absolute sum of details",
         title=f"Cumulative Price vs. Absolute Detail Sum for H_{i_level}",
-        filename=f"sum_abs_details_for_H{i_level}.png",
-        secondary_color="green"
+        filename=f"sum_abs_details_for_H{i_level}_{ticker_name}.png",
+        secondary_color="green",
+        show=False
     )
     print(f"  Plot saved to: {file_path}")
 
@@ -204,27 +206,124 @@ for i_level in range(1, level + 1):              # i_level is the i in H_i
     approx_coeff_list = [coeffs[0]] + [np.zeros_like(c) for c in coeffs[1:]]
     approx = pywt.waverec(approx_coeff_list, 'haar', mode='periodization')
     approx = approx[:len(abs_detail_sum)]
-    approx = np.where(approx == 0, 1e-10, approx)            # avoid /0
+    approx = np.where(approx == 0, 1e-10, approx)  # Avoid division by zero
 
     # ------- Compute H_i(t) = Σ|D_j| / A_L -------
     H_series[i_level] = abs_detail_sum / approx
     print(f"  H_{i_level} computed, length: {len(H_series[i_level])}")
 
+# ------- Create subplots for each H_i with D_1 to D_j and H_i stacked -------
+for i_level in range(1, level + 1):
+    # Number of subplots: i_level details + H_i
+    n_subplots = i_level + 1
+    fig, axes = plt.subplots(n_subplots, 1, figsize=(14, 4 * n_subplots), sharex=True)
+    
+    # Ensure axes is a list even for a single subplot
+    if n_subplots == 1:
+        axes = [axes]
+    
+    # Plot each detail D_j for j=1 to i_level with cumulative price
+    for j_level in range(1, i_level + 1):
+        ax1 = axes[j_level - 1]
+        ax2 = ax1.twinx()  # Secondary y-axis for cumulative price
+        detail_series = pd.Series(
+            detail_reconstructed_series[i_level][j_level],
+            index=df_log_ret.index,
+            name=f"Detail_D{j_level}"
+        )
+        # Plot detail D_j
+        sns.lineplot(
+            data=detail_series,
+            ax=ax1,
+            color="green",
+            label=f"Detail D{j_level}",
+            alpha=0.65
+        )
+        # Plot cumulative price
+        ax2.plot(
+            cumulative_prices.index,
+            cumulative_prices,
+            label="Cumulative Price"
+        )
+        ax1.set_ylabel(f"D{j_level} Amplitude", fontsize=14)
+        ax2.set_ylabel("Cumulative Price", fontsize=14)
+        ax1.tick_params(axis='y', labelsize=12)
+        ax2.tick_params(axis='y', labelsize=12)
+        ax1.yaxis.set_major_formatter(plt.matplotlib.ticker.FormatStrFormatter('%.2f'))  # 2 decimals for D_j
+        # Combine legends
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=12)
+
+    # Plot H_i in the last subplot with cumulative price
+    ax1 = axes[-1]
+    ax2 = ax1.twinx()
+    h_series = pd.Series(H_series[i_level], index=df_log_ret.index, name=f"H_{i_level}")
+    sns.lineplot(
+        data=h_series,
+        ax=ax1,
+        color="red",
+        label=f"H_{i_level}(t)",
+        alpha=0.65
+    )
+    ax2.plot(
+        cumulative_prices.index,
+        cumulative_prices,
+        label="Cumulative Price",
+    )
+    ax1.set_ylabel(f"H_{i_level} Value (%)", fontsize=14)
+    ax2.set_ylabel("Cumulative Price", fontsize=14)
+    ax1.tick_params(axis='y', labelsize=12)
+    ax2.tick_params(axis='y', labelsize=12)
+    #ax1.yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(xmax=1, decimals=0))  # No decimals, percentage
+    # Combine legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=12)
+
+    # Set common x-axis label and title
+    axes[-1].set_xlabel("Date", fontsize=14)
+    axes[-1].tick_params(axis='x', labelsize=12)
+    fig.suptitle(f"Reconstructed Details and H_{i_level} with Cumulative Price for {ticker_name}", fontsize=18)
+    plt.xticks(rotation=45)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust for suptitle
+
+    # Save the subplot
+    file_path = f'plots/H_{i_level}_with_details_and_price_{ticker_name}.png'
+    plt.savefig(file_path)
+    print(f"Subplot for H_{i_level} and details with cumulative price saved to: {file_path}")
+    plt.show()
+
 # ---------- Plot all H_i(t) curves together ----------
 plt.figure(figsize=(14, 7))
+# Plot all H_i(t) curves
 for i_level in range(1, level + 1):
-    plt.plot(df_log_ret.index, H_series[i_level], label=f'$H_{i_level}(t)$')
+    h_series = pd.Series(H_series[i_level], index=df_log_ret.index, name=f"H_{i_level}")
+    plt.plot(h_series.index, h_series.values, label=f'$H_{i_level}(t)$')
 
-plt.title('$H_i(t)$ across detail aggregation levels')
-plt.xlabel('Date')
-plt.ylabel('$H_i(t)$')
-plt.legend(title='Aggregation level', loc='upper right')
-plt.xticks(rotation=45)
+# Plot cumulative returns (cumulative_prices) on a secondary y-axis
+ax1 = plt.gca()
+ax2 = ax1.twinx()
+ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return')
+ax2.set_ylabel('Cumulative Return', fontsize=20, color='black')
+ax2.tick_params(axis='y', labelsize=16, colors='black')
+
+# Main axis labels and legend
+ax1.set_title(f'$H_i(t)$ across detail aggregation levels for {ticker_name}', fontsize=28)
+ax1.set_xlabel('Date', fontsize=24)
+ax1.set_ylabel('$H_i(t)$ (%)', fontsize=24)
+ax1.tick_params(axis='both', labelsize=16)
+ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
+
+# Combine legends from both axes
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, title='Aggregation level', loc='upper left', fontsize=16)
+
 plt.tight_layout()
 plt.savefig(f'plots/H_series_all_levels_{ticker_name}.png')
-print(f"\nPlot of all H_series saved to: plots/H_series_all_levels_{ticker_name}.png")
+print(f"Plot of all H_series saved to: plots/H_series_all_levels_{ticker_name}.png")
 plt.show()
-
 
 # Paso 4: Calcular energía móvil (ventana de 30 días)
 print("\n--- Iniciando Cálculo de Energía Móvil ---")
@@ -238,14 +337,30 @@ for i_h_level in range(1, level + 1):
     ).apply(lambda x: np.sum(x**2), raw=True).values
     print(f"Energía móvil H_{i_h_level}, longitud: {len(energy_series[i_h_level])}")
 
-# Plot Energy_series todas juntas
-plt.figure(figsize=(12, 6))
+# Plot Energy_series todas juntas + cummulative returns
+fig, ax1 = plt.subplots(figsize=(14, 7))
+
+# Plot energy series
 for i_h_level_plot in range(1, level + 1):
-    plt.plot(df_log_ret.index, energy_series[i_h_level_plot], label=f'$Energy(H_{i_h_level_plot})$')
-plt.xlabel('Fecha')
-plt.ylabel('Energía Móvil de $H_i(t)$')
-plt.title('Energía Móvil de $H_i(t)$ para cada Nivel (Ventana 30 días)')
-plt.legend()
+    ax1.plot(df_log_ret.index, energy_series[i_h_level_plot], label=f'$Energy(H_{i_h_level_plot})$')
+
+ax1.set_xlabel('Fecha', fontsize=18)
+ax1.set_ylabel('Energía Móvil de $H_i(t)$', fontsize=18)
+ax1.tick_params(axis='both', labelsize=15)
+ax1.set_title('Energía Móvil de $H_i(t)$ para cada Nivel (Ventana 30 días)', fontsize=22)
+
+# Plot cumulative returns on secondary axis
+ax2 = ax1.twinx()
+ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return')
+ax2.set_ylabel('Cumulative Return', fontsize=18)
+ax2.tick_params(axis='y', labelsize=15)
+ax2.yaxis.set_major_formatter(plt.matplotlib.ticker.FormatStrFormatter('%.2f'))
+
+# Combine legends from both axes
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=15, title_fontsize=16)
+
 plt.tight_layout()
 plt.savefig(f'plots/Energy_series_all_levels_{ticker_name}.png')
 print(f"Gráfico de todas las Energy_series guardado en: plots/Energy_series_all_levels_{ticker_name}.png")
@@ -318,7 +433,7 @@ for i_h_level in range(1, level + 1):
 # --- Plot de H_i observada vs. Denoised H_i (similar a p.23 del PDF) ---
 level_to_plot_denoising = 1 # Elige un nivel, por ejemplo H_1
 if level_to_plot_denoising in H_series and level_to_plot_denoising in denoised_series:
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(16, 10))
     plt.subplot(2, 1, 1)
     plt.plot(df_log_ret.index, H_series[level_to_plot_denoising], label=f'$H_{level_to_plot_denoising}$ (Observada)')
     plt.title(f'$H_{level_to_plot_denoising}(t)$ (Observada)')
@@ -326,26 +441,46 @@ if level_to_plot_denoising in H_series and level_to_plot_denoising in denoised_s
     plt.legend()
 
     plt.subplot(2, 1, 2)
-    plt.plot(df_log_ret.index, denoised_series[level_to_plot_denoising], label=f'Denoised $H_{level_to_plot_denoising}$', color='orange')
-    plt.title(f'Denoised $H_{level_to_plot_denoising}(t)$ ({threshold_energy_retain*100}% Energía Retenida)')
-    plt.xlabel('Fecha')
-    plt.ylabel('Amplitud')
-    plt.legend()
-
+    ax1 = plt.gca()
+    ax1.plot(df_log_ret.index, denoised_series[level_to_plot_denoising], label=f'Denoised $H_{level_to_plot_denoising}$', color='orange')
+    ax1.set_ylabel('Amplitud')
+    ax2 = ax1.twinx()
+    ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return', alpha=0.5)
+    ax2.set_ylabel('Cumulative Return')
+    ax1.set_xlabel('Fecha')
+    plt.title(f'Denoised $H_{level_to_plot_denoising}(t)$ y Cumulative Return ({threshold_energy_retain*100}% Energía Retenida)')
+    # Combine legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
     plt.tight_layout()
     plt.savefig(f'plots/H{level_to_plot_denoising}_vs_denoised_{ticker_name}.png')
     print(f"\nGráfico de H_{level_to_plot_denoising} y su versión denoised guardado en: plots/H{level_to_plot_denoising}_vs_denoised_{ticker_name}.png")
     plt.show()
 
 # --- Plot de todas las Denoised H_series (similar a p.24 del PDF) ---
-plt.figure(figsize=(12, 6))
+plt.figure(figsize=(16, 10))
+ax1 = plt.gca()
+# Plot all denoised H_i(t) series
 for i_plot in range(1, level + 1):
     if i_plot in denoised_series:
-        plt.plot(df_log_ret.index[:len(denoised_series[i_plot])], denoised_series[i_plot], label=f'Denoised $H_{i_plot}$')
-plt.xlabel('Fecha')
-plt.ylabel('Amplitud Denoised $H_i(t)$')
-plt.title(f'Denoised $H_i(t)$ para cada Nivel ({threshold_energy_retain*100}% Energía Retenida)')
-plt.legend()
+        ax1.plot(df_log_ret.index[:len(denoised_series[i_plot])], denoised_series[i_plot], label=f'Denoised $H_{i_plot}$')
+ax1.set_xlabel('Fecha')
+ax1.set_ylabel('Amplitud Denoised $H_i(t)$')
+ax1.set_title(f'Denoised $H_i(t)$ para cada Nivel ({threshold_energy_retain*100}% Energía Retenida)')
+ax1.tick_params(axis='y', labelsize=12)
+
+# Plot cumulative returns on secondary axis
+ax2 = ax1.twinx()
+ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return', color='black', alpha=0.5)
+ax2.set_ylabel('Cumulative Return')
+ax2.tick_params(axis='y', labelsize=12)
+
+# Combine legends from both axes
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+
 plt.tight_layout()
 plt.savefig(f'plots/denoised_H_series_all_levels_{ticker_name}.png')
 print(f"Gráfico de todas las Denoised H_series guardado en: plots/denoised_H_series_all_levels_{ticker_name}.png")
