@@ -1,6 +1,9 @@
-import os
-import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 import seaborn as sns
+import matplotlib.pyplot as plt
+import pywt
+import os
 
 def plot_two_axis(
     primary_series,
@@ -14,9 +17,9 @@ def plot_two_axis(
     output_dir="plots",
     filename="plot.png",
     figsize=(12, 6),
-    secondary_color=None,      # ← None = se elige automáticamente
-    secondary_alpha=0.65,      # ← transparencia suave
-    primary_alpha=0.50,        # ← transparencia de la serie primaria
+    secondary_color=None,
+    secondary_alpha=0.65,
+    primary_alpha=0.50,
     show=True
 ):
     """
@@ -67,12 +70,11 @@ def plot_two_axis(
 
     # 4 · Estilo general Seaborn
     sns.set_theme(
-        style="darkgrid",
         rc={
-            "axes.titlesize": 16,
-            "axes.labelsize": 13,
-            "xtick.labelsize": 11,
-            "ytick.labelsize": 11,
+            "axes.titlesize": 28,
+            "axes.labelsize": 24,
+            "xtick.labelsize": 24,
+            "ytick.labelsize": 24,
         }
     )
 
@@ -86,7 +88,8 @@ def plot_two_axis(
         label=primary_label,
         alpha=primary_alpha
     )
-    ax1.set_ylabel(primary_ylabel or primary_label)
+    ax1.set_ylabel(primary_ylabel or primary_label, fontsize=16)
+    ax1.tick_params(axis='both', labelsize=16)
 
     #   · Eje secundario
     ax2 = ax1.twinx()
@@ -97,16 +100,17 @@ def plot_two_axis(
         color=secondary_color,
         alpha=secondary_alpha
     )
-    ax2.set_ylabel(secondary_ylabel or secondary_label)
+    ax2.set_ylabel(secondary_ylabel or secondary_label, fontsize=16)
+    ax2.tick_params(axis='y', labelsize=11)
 
     # 6 · Leyenda combinada
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=16)
 
     # 7 · Título y guardado
     if title:
-        plt.title(title)
+        plt.title(title, fontsize=22)
     plt.tight_layout()
     plt.savefig(file_path)
 
