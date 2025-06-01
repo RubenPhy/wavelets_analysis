@@ -103,105 +103,150 @@ if __name__ == "__main__":
     # Definir el diccionario de eventos por sector
     events = {
         'Consumer Discretionary': {
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado debido a preocupaciones sobre la economía china.',
-            pd.to_datetime('2015-09-18'): 'Escándalo de emisiones de Volkswagen, afectando acciones automotrices.',
-            pd.to_datetime('2017-09-18'): 'Toys "R" Us declara bancarrota, impactando el sector retail.',
-            pd.to_datetime('2018-10-15'): 'Sears declara bancarrota, afectando el comercio minorista.',
-            pd.to_datetime('2018-12-24'): 'S&P 500 cierra en su nivel más bajo del año por tensiones comerciales y subidas de tasas.',
-            pd.to_datetime('2020-03-11'): 'OMS declara la pandemia de COVID-19, causando una caída en el gasto discrecional.',
-            pd.to_datetime('2020-05-04'): 'J.Crew declara bancarrota durante la pandemia.'
+            pd.to_datetime('2012-11-16'): 'Lanzamiento de la Wii U de Nintendo, con ventas iniciales por debajo de las expectativas.',
+            pd.to_datetime('2014-10-22'): 'Anuncio de Apple Pay, impulsando el interés en los pagos móviles y el sector tecnológico de consumo.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado debido a preocupaciones sobre la economía china ("Lunes Negro Chino").',
+            pd.to_datetime('2015-09-18'): 'Escándalo de emisiones de Volkswagen ("Dieselgate"), afectando gravemente a las acciones automotrices.',
+            pd.to_datetime('2017-06-16'): 'Amazon anuncia la adquisición de Whole Foods, sacudiendo el sector minorista y de supermercados.',
+            pd.to_datetime('2017-09-18'): 'Toys "R" Us declara bancarrota (Capítulo 11), impactando el sector retail de juguetes.',
+            pd.to_datetime('2018-10-15'): 'Sears declara bancarrota, marcando un hito en la crisis del comercio minorista tradicional.',
+            pd.to_datetime('2018-12-24'): 'El S&P 500 cierra en su nivel más bajo del año por tensiones comerciales EE.UU.-China y subidas de tasas de la Fed.',
+            pd.to_datetime('2020-03-11'): 'OMS declara la pandemia de COVID-19, causando una caída masiva en el gasto discrecional y cierres generalizados.',
+            pd.to_datetime('2020-05-04'): 'J.Crew declara bancarrota durante la pandemia, una de las primeras grandes minoristas en hacerlo.',
+            pd.to_datetime('2021-03-01'): 'Auge de las "meme stocks" (ej. GameStop, AMC) impulsado por inversores minoristas, generando alta volatilidad.',
+            pd.to_datetime('2023-07-21'): 'Estreno de las películas "Barbie" y "Oppenheimer" ("Barbenheimer"), generando un impulso significativo para los cines.'
         },
         'Consumer Staples': {
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado afectando todos los sectores.',
-            pd.to_datetime('2018-12-24'): 'Venta masiva en el mercado impactando precios de acciones.',
-            pd.to_datetime('2019-02-22'): 'Acciones de Kraft Heinz caen por malos resultados y investigación de la SEC.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa volatilidad inicial antes de estabilizarse en bienes esenciales.',
-            pd.to_datetime('2016-04-20'): 'Brote de listeria en Blue Bell Creameries lleva a un recall, afectando acciones.',
-            pd.to_datetime('2022-01-01'): 'Preocupaciones por inflación comienzan a impactar a empresas de bienes de consumo.',
-            pd.to_datetime('2018-01-01'): 'Volatilidad general del mercado afectando menos a este sector defensivo.'
+            pd.to_datetime('2015-03-25'): 'Anuncio de la fusión de Kraft Foods y H.J. Heinz Company.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado ("Lunes Negro Chino") afectando todos los sectores, aunque staples muestra más resiliencia.',
+            pd.to_datetime('2016-04-20'): 'Brote de listeria en Blue Bell Creameries lleva a un recall masivo, afectando sus acciones y la confianza del consumidor.',
+            pd.to_datetime('2017-06-16'): 'Adquisición de Whole Foods por Amazon intensifica la competencia en el sector de supermercados.',
+            pd.to_datetime('2018-01-22'): 'Walmart anuncia aumento de salarios y bonos tras la reforma fiscal en EE.UU., reflejando presiones y reinversión.',
+            pd.to_datetime('2018-12-24'): 'Venta masiva en el mercado ("Christmas Eve Crash") impactando precios de acciones, aunque staples relativamente menos afectado.',
+            pd.to_datetime('2019-02-22'): 'Acciones de Kraft Heinz caen drásticamente por malos resultados, devaluación de activos e investigación de la SEC.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19: Pánico comprador inicial y acaparamiento de bienes esenciales, luego estabilización de la demanda.',
+            pd.to_datetime('2022-02-01'): 'Empresas de bienes de consumo comienzan a reportar fuerte impacto de la inflación en costos y precios al consumidor (tendencia iniciada a finales de 2021).',
+            pd.to_datetime('2023-05-01'): 'Continúa la presión inflacionaria y cambios en el comportamiento del consumidor hacia marcas blancas o de menor coste.'
         },
         'Energy': {
-            pd.to_datetime('2014-11-27'): 'OPEP decide no reducir producción, causando una caída en los precios del petróleo.',
-            pd.to_datetime('2015-08-24'): 'Precios del petróleo caen por preocupaciones sobre la economía china.',
-            pd.to_datetime('2016-01-20'): 'Precios del petróleo alcanzan un mínimo de 12 años.',
-            pd.to_datetime('2020-03-09'): 'Precios del petróleo colapsan tras la guerra de precios Rusia-Arabia Saudita.',
-            pd.to_datetime('2020-04-20'): 'Precios del WTI caen a negativo por primera vez en la historia.',
-            pd.to_datetime('2022-02-24'): 'Invasión de Rusia a Ucrania genera volatilidad en el mercado energético.',
+            pd.to_datetime('2012-01-01'): 'Auge de la producción de shale oil en EE.UU. comienza a transformar el mercado energético global.',
+            pd.to_datetime('2014-11-27'): 'OPEP decide no reducir producción a pesar de la caída de precios, exacerbando el desplome del petróleo.',
+            pd.to_datetime('2015-08-24'): 'Precios del petróleo caen significativamente por preocupaciones sobre la desaceleración económica china.',
+            pd.to_datetime('2016-01-20'): 'Precios del petróleo alcanzan un mínimo de 12 años (Brent cerca de $27/barril).',
+            pd.to_datetime('2019-09-14'): 'Ataques a instalaciones petroleras saudíes (Abqaiq-Khurais) causan la mayor disrupción súbita de suministro de la historia.',
+            pd.to_datetime('2020-03-09'): 'Precios del petróleo colapsan tras el desacuerdo OPEP+ y el inicio de la guerra de precios Rusia-Arabia Saudita.',
+            pd.to_datetime('2020-04-20'): 'Precios del crudo WTI caen a territorio negativo por primera vez en la historia debido a la falta de almacenamiento.',
+            pd.to_datetime('2022-02-24'): 'Invasión de Rusia a Ucrania genera extrema volatilidad en el mercado energético y sanciones contra Rusia.',
+            pd.to_datetime('2022-06-08'): 'Precios de la gasolina en EE.UU. alcanzan máximos históricos superando los $5/galón.',
             pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas políticas energéticas impactan el sector.'
         },
         'Financials': {
-            pd.to_datetime('2012-05-18'): 'IPO de Facebook enfrenta problemas, afectando acciones financieras y tecnológicas.',
-            pd.to_datetime('2013-10-01'): 'Inicio del cierre del gobierno de EE.UU., causando incertidumbre en el mercado.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado impactando acciones financieras.',
-            pd.to_datetime('2016-06-24'): 'Resultados del voto del Brexit generan volatilidad global.',
-            pd.to_datetime('2018-12-24'): 'Venta masiva por subidas de tasas y tensiones comerciales.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 impacta severamente los mercados financieros.',
-            pd.to_datetime('2023-03-10'): 'Colapso de Silicon Valley Bank sacude el sector financiero.'
+            pd.to_datetime('2012-05-18'): 'IPO de Facebook enfrenta problemas técnicos y sobrevaloración, afectando la confianza en IPOs tecnológicas y bancos suscriptores.',
+            pd.to_datetime('2012-07-26'): 'Mario Draghi (BCE) declara que hará "lo que sea necesario" para preservar el euro, calmando la crisis de deuda soberana europea.',
+            pd.to_datetime('2013-05-22'): 'Ben Bernanke (Fed) sugiere posible reducción de compra de bonos ("Taper Tantrum"), causando volatilidad en mercados globales.',
+            pd.to_datetime('2013-10-01'): 'Inicio del cierre del gobierno de EE.UU. por 16 días, causando incertidumbre en el mercado.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado ("Lunes Negro Chino") impactando fuertemente a las acciones financieras globales.',
+            pd.to_datetime('2016-06-24'): 'Resultados del voto del Brexit generan volatilidad global masiva, especialmente en acciones financieras europeas y británicas.',
+            pd.to_datetime('2018-12-24'): 'Fuerte venta masiva en mercados ("Christmas Eve Crash") por temores a subidas de tasas y tensiones comerciales.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 impacta severamente los mercados financieros, con fuertes caídas y aumento de la volatilidad (VIX).',
+            pd.to_datetime('2020-03-15'): 'La Reserva Federal recorta las tasas de interés a casi cero y lanza programas de QE masivos.',
+            pd.to_datetime('2023-03-10'): 'Colapso de Silicon Valley Bank (SVB) sacude el sector bancario regional en EE.UU. y genera temores de contagio.',
+            pd.to_datetime('2023-03-19'): 'UBS acuerda comprar Credit Suisse en un rescate orquestado por las autoridades suizas.'
         },
         'Health Care': {
-            pd.to_datetime('2012-06-28'): 'Corte Suprema ratifica la Ley de Cuidado de Salud Asequible, afectando seguros de salud.',
-            pd.to_datetime('2015-09-21'): 'Controversia por aumento de precios de Turing Pharmaceuticals.',
-            pd.to_datetime('2016-08-22'): 'Escándalo de precios de EpiPen por Mylan impacta acciones farmacéuticas.',
-            pd.to_datetime('2017-07-28'): 'Senado vota en contra de derogar Obamacare, estabilizando el sector.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa caídas iniciales antes de aumentar la demanda sanitaria.',
-            pd.to_datetime('2019-01-01'): 'Litigios por la crisis de opioides afectan a empresas farmacéuticas.',
-            pd.to_datetime('2021-01-01'): 'Desafíos en la distribución de vacunas impactan acciones de salud.'
+            pd.to_datetime('2012-06-28'): 'Corte Suprema de EE.UU. ratifica la Ley de Cuidado de Salud Asequible (ACA u "Obamacare"), impactando a aseguradoras y proveedores.',
+            pd.to_datetime('2015-09-21'): 'Controversia por el drástico aumento de precios del Daraprim por Turing Pharmaceuticals (Martin Shkreli).',
+            pd.to_datetime('2016-08-22'): 'Escándalo por el aumento de precios de EpiPen por Mylan impacta acciones farmacéuticas y genera debate político.',
+            pd.to_datetime('2017-07-28'): 'El Senado de EE.UU. vota en contra de derogar partes clave de Obamacare, estabilizando temporalmente el sector.',
+            pd.to_datetime('2019-01-01'): 'Aumento de litigios y acuerdos relacionados con la crisis de opioides afectan a grandes farmacéuticas y distribuidoras (la crisis venía desarrollándose años antes).',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19: Caídas iniciales en el sector, seguidas de un fuerte aumento en la demanda de servicios sanitarios, pruebas y desarrollo de vacunas/tratamientos.',
+            pd.to_datetime('2020-12-11'): 'FDA otorga la primera autorización de uso de emergencia para una vacuna COVID-19 (Pfizer-BioNTech) en EE.UU.',
+            pd.to_datetime('2021-01-01'): 'Desafíos logísticos y de producción en la distribución global de vacunas COVID-19 impactan acciones de salud y la recuperación económica.',
+            pd.to_datetime('2022-07-01'): 'La Ley de Reducción de la Inflación (EE.UU.) incluye provisiones para negociar precios de medicamentos, impactando perspectivas de farmacéuticas.',
+            pd.to_datetime('2023-06-01'): 'Auge del interés y la inversión en medicamentos para la pérdida de peso (GLP-1), como Ozempic y Wegovy.'
         },
         'Industrials': {
-            pd.to_datetime('2018-07-06'): 'EE.UU. impone aranceles a bienes chinos, afectando manufactura e industrias.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 interrumpe cadenas de suministro y producción industrial.',
-            pd.to_datetime('2022-02-24'): 'Conflicto Rusia-Ucrania afecta el comercio global e industrial.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado por preocupaciones económicas globales.',
-            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera incertidumbre en inversiones industriales.',
-            pd.to_datetime('2019-05-10'): 'Escalada de la guerra comercial EE.UU.-China con nuevos aranceles.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado por preocupaciones económicas globales, especialmente de China, afectando demanda industrial.',
+            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera incertidumbre sobre futuras relaciones comerciales e inversiones industriales en Europa y Reino Unido.',
+            pd.to_datetime('2018-07-06'): 'EE.UU. impone la primera ronda de aranceles a bienes chinos por valor de $34 mil millones, iniciando una guerra comercial.',
+            pd.to_datetime('2019-03-10'): 'Boeing 737 MAX es dejado en tierra a nivel mundial tras dos accidentes fatales, afectando a Boeing y la cadena de suministro aeroespacial.',
+            pd.to_datetime('2019-05-10'): 'Escalada de la guerra comercial EE.UU.-China con nuevos aranceles mutuos.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 interrumpe cadenas de suministro globales y paraliza gran parte de la producción industrial.',
+            pd.to_datetime('2021-03-23'): 'El buque Ever Given bloquea el Canal de Suez, resaltando la fragilidad de las cadenas de suministro globales.',
+            pd.to_datetime('2021-11-15'): 'Firma de la Ley de Inversión en Infraestructura y Empleos en EE.UU., proyectando inversión en transporte, agua, banda ancha.',
+            pd.to_datetime('2022-02-24'): 'Conflicto Rusia-Ucrania afecta el comercio global, las cadenas de suministro (especialmente de componentes) y los costos de energía para la industria.',
             pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas regulaciones industriales o políticas económicas.'
         },
         'Information Technology': {
-            pd.to_datetime('2018-03-17'): 'Escándalo de Cambridge Analytica en Facebook afecta acciones tecnológicas.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa caídas iniciales en tecnología antes de recuperación.',
-            pd.to_datetime('2022-01-01'): 'Inicio de venta masiva en tecnología por subidas de tasas y preocupaciones de valoración.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado impacta el sector tecnológico.',
-            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera volatilidad en inversiones tecnológicas.',
-            pd.to_datetime('2019-05-13'): 'EE.UU. prohíbe a Huawei, afectando cadenas de suministro tecnológicas.',
-            pd.to_datetime('2023-01-01'): 'Evento hipotético: Acciones antimonopolio contra grandes tecnológicas.'
+            pd.to_datetime('2012-05-18'): 'Problemática IPO de Facebook genera escepticismo sobre valoraciones en el sector tecnológico.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado ("Lunes Negro Chino") impacta fuertemente al sector tecnológico, especialmente a empresas con exposición a China.',
+            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera volatilidad en inversiones tecnológicas y preocupación por el acceso a talento y mercados.',
+            pd.to_datetime('2018-03-17'): 'Estalla el escándalo de Cambridge Analytica y Facebook, afectando acciones tecnológicas y aumentando el escrutinio regulatorio.',
+            pd.to_datetime('2019-05-13'): 'EE.UU. prohíbe a Huawei el acceso a tecnología estadounidense, afectando cadenas de suministro tecnológicas globales y a empresas de semiconductores.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19: Caídas iniciales en tecnología, seguidas de una fuerte recuperación y auge impulsado por el trabajo remoto, e-commerce y digitalización.',
+            pd.to_datetime('2020-10-20'): 'Departamento de Justicia de EE.UU. demanda a Google por prácticas anticompetitivas, marcando un aumento en el escrutinio antimonopolio.',
+            pd.to_datetime('2021-04-01'): 'Inicio de la escasez global de semiconductores se vuelve crítica, afectando a múltiples industrias dependientes de la tecnología.',
+            pd.to_datetime('2022-01-01'): 'Inicio de una corrección significativa en el sector tecnológico ("Tech Wreck") debido a subidas de tasas de interés y preocupaciones sobre valoraciones altas.',
+            pd.to_datetime('2022-11-30'): 'Lanzamiento público de ChatGPT por OpenAI, desatando un frenesí de inversión y desarrollo en inteligencia artificial generativa.',
+            pd.to_datetime('2023-01-01'): 'Evento hipotético: Acciones antimonopolio concertadas contra grandes tecnológicas (Big Tech).'
         },
         'Materials': {
-            pd.to_datetime('2015-08-24'): 'Colapso del mercado chino afecta precios de commodities y el sector de materiales.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 reduce la demanda de materiales industriales.',
-            pd.to_datetime('2022-02-24'): 'Conflicto Rusia-Ucrania interrumpe cadenas de suministro de materias primas.',
-            pd.to_datetime('2018-07-06'): 'Guerra comercial EE.UU.-China impacta exportaciones de materiales.',
-            pd.to_datetime('2016-01-20'): 'Precios de commodities alcanzan mínimos por desaceleración económica global.',
-            pd.to_datetime('2019-05-10'): 'Escalada de tensiones comerciales afecta el sector de materiales.',
-            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas regulaciones ambientales impactan producción de materiales.'
+            pd.to_datetime('2015-08-24'): 'Colapso del mercado chino y la devaluación del yuan afectan drásticamente los precios de commodities y el sector de materiales.',
+            pd.to_datetime('2016-01-20'): 'Precios de commodities (ej. cobre, mineral de hierro) alcanzan mínimos de varios años por desaceleración económica global y sobreoferta.',
+            pd.to_datetime('2018-07-06'): 'Inicio de la guerra comercial EE.UU.-China con imposición de aranceles impacta la demanda y precios de metales industriales y otros materiales.',
+            pd.to_datetime('2019-01-25'): 'Colapso de una presa de relaves mineros de Vale en Brumadinho (Brasil), con graves consecuencias humanas y ambientales, impactando al sector minero.',
+            pd.to_datetime('2019-05-10'): 'Escalada de tensiones comerciales EE.UU.-China afecta negativamente al sector de materiales por temores a menor demanda global.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 reduce drásticamente la demanda de materiales industriales por paralización de la actividad económica.',
+            pd.to_datetime('2021-05-01'): 'Fuerte repunte en los precios de las materias primas (superciclo) debido a la recuperación de la demanda post-pandemia y cuellos de botella.',
+            pd.to_datetime('2022-02-24'): 'Conflicto Rusia-Ucrania interrumpe cadenas de suministro de materias primas clave (ej. aluminio, níquel, paladio, fertilizantes) y eleva precios.',
+            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas regulaciones ambientales impactan producción de materiales.',
+            pd.to_datetime('2023-08-01'): 'Discusiones sobre la seguridad de las cadenas de suministro de minerales críticos (litio, cobalto, tierras raras) se intensifican globalmente.'
         },
         'Real Estate': {
-            pd.to_datetime('2018-12-19'): 'La Reserva Federal sube tasas de interés, afectando tasas hipotecarias y acciones inmobiliarias.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 impacta severamente el real estate comercial.',
-            pd.to_datetime('2022-03-16'): 'Inicio de subidas de tasas por la Fed, aumentando costos de préstamo para bienes raíces.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado afecta inversiones inmobiliarias.',
-            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera incertidumbre en mercados inmobiliarios globales.',
-            pd.to_datetime('2019-01-01'): 'Desaceleración del mercado de vivienda por problemas de asequibilidad.',
-            pd.to_datetime('2023-01-01'): 'Evento hipotético: Cambios en leyes de impuestos o regulaciones de zonificación.'
+            pd.to_datetime('2013-05-22'): '"Taper Tantrum": El anuncio de la Fed sobre posible reducción de QE eleva tasas hipotecarias y enfría brevemente el mercado inmobiliario.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado global ("Lunes Negro Chino") afecta temporalmente las inversiones inmobiliarias y REITs.',
+            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera incertidumbre en mercados inmobiliarios globales, especialmente en el Reino Unido y Europa.',
+            pd.to_datetime('2018-12-19'): 'La Reserva Federal sube las tasas de interés por cuarta vez en el año, afectando las tasas hipotecarias y enfriando el mercado de acciones inmobiliarias.',
+            pd.to_datetime('2019-01-01'): 'Desaceleración del mercado de vivienda en varias regiones debido a problemas de asequibilidad y aumento de tasas previo.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 impacta severamente el real estate comercial (oficinas, retail, hoteles) pero impulsa el residencial y logístico.',
+            pd.to_datetime('2020-07-01'): 'Éxodo de ciudades hacia suburbios y zonas rurales en algunos países debido al teletrabajo, cambiando la demanda inmobiliaria.',
+            pd.to_datetime('2022-03-16'): 'Inicio de un ciclo agresivo de subidas de tasas por la Fed para combatir la inflación, aumentando significativamente los costos de préstamo para bienes raíces.',
+            pd.to_datetime('2022-11-01'): 'Caída de los precios de la vivienda en muchos mercados desarrollados después del auge pandémico, debido al alza de tasas.',
+            pd.to_datetime('2023-01-01'): 'Evento hipotético: Cambios en leyes de impuestos o regulaciones de zonificación.',
+            pd.to_datetime('2023-05-01'): 'Persistente debilidad en el sector de oficinas comerciales debido al trabajo híbrido, mientras el sector industrial y de datos sigue fuerte.'
         },
-        'Telecommunication Services': {
-            pd.to_datetime('2017-04-01'): 'Guerra de precios en la industria telecomunicaciones de EE.UU. lleva a caídas en acciones.',
-            pd.to_datetime('2018-06-12'): 'Aprobación de la fusión AT&T-Time Warner, impactando dinámicas del sector.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa volatilidad inicial pero aumenta demanda de servicios telecom.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado afecta acciones de telecomunicaciones.',
-            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera volatilidad global, incluyendo telecomunicaciones.',
-            pd.to_datetime('2019-01-01'): 'Inicio del despliegue de 5G, con costos iniciales presionando acciones.',
-            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas subastas de espectro o cambios regulatorios.'
+        'Telecommunication Services': { # Comunicación a partir de 2018, antes Telecomunicaciones
+            pd.to_datetime('2013-07-10'): 'Verizon anuncia la compra de la participación de Vodafone en Verizon Wireless por $130 mil millones, una de las mayores operaciones corporativas.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado ("Lunes Negro Chino") afecta acciones de telecomunicaciones, aunque suelen ser más defensivas.',
+            pd.to_datetime('2016-06-24'): 'Voto del Brexit genera volatilidad global, incluyendo telecomunicaciones, por incertidumbre económica.',
+            pd.to_datetime('2017-02-01'): 'Intensificación de la guerra de precios en la industria de telecomunicaciones móviles de EE.UU. (ej. T-Mobile Un-carrier) presiona márgenes.',
+            pd.to_datetime('2017-12-14'): 'La FCC de EE.UU. vota para derogar las reglas de neutralidad de la red ("Net Neutrality").',
+            pd.to_datetime('2018-06-12'): 'Un juez aprueba la fusión AT&T-Time Warner, impactando las dinámicas del sector de medios y telecomunicaciones.',
+            pd.to_datetime('2019-01-01'): 'Inicio del despliegue comercial de redes 5G, con altos costos de inversión iniciales presionando a las empresas del sector.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa volatilidad inicial pero aumenta drásticamente la demanda de servicios de telecomunicaciones (banda ancha, móviles) por trabajo y ocio en casa.',
+            pd.to_datetime('2020-04-01'): 'Fusión de T-Mobile y Sprint es completada en EE.UU., consolidando el mercado móvil.',
+            pd.to_datetime('2021-02-24'): 'Subastas de espectro 5G (banda C en EE.UU.) alcanzan precios récord, mostrando el alto valor de esta infraestructura.',
+            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas subastas de espectro o cambios regulatorios significativos.'
         },
         'Utilities': {
-            pd.to_datetime('2021-02-15'): 'Fallo de la red eléctrica de Texas durante la tormenta invernal causa volatilidad en acciones.',
-            pd.to_datetime('2022-03-16'): 'Inicio de subidas de tasas por la Fed, afectando utilities sensibles a tasas por su alta deuda.',
-            pd.to_datetime('2015-08-24'): 'Corrección del mercado impacta acciones de utilities.',
-            pd.to_datetime('2018-12-24'): 'Venta masiva afecta todos los sectores, incluyendo utilities.',
-            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa caídas iniciales, aunque utilities son defensivas.',
-            pd.to_datetime('2019-01-29'): 'PG&E declara bancarrota debido a incendios en California, afectando acciones de utilities.',
-            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas normas de eficiencia energética o mandatos de energías renovables.'
+            pd.to_datetime('2012-10-29'): 'El huracán Sandy causa apagones masivos en el noreste de EE.UU., destacando la vulnerabilidad de la infraestructura eléctrica.',
+            pd.to_datetime('2015-08-24'): 'Corrección del mercado ("Lunes Negro Chino") impacta acciones de utilities, aunque son vistas como sector defensivo.',
+            pd.to_datetime('2017-09-20'): 'El huracán María devasta Puerto Rico, destruyendo gran parte de su red eléctrica y generando una crisis humanitaria.',
+            pd.to_datetime('2018-12-24'): 'Venta masiva en el mercado ("Christmas Eve Crash") afecta todos los sectores, incluyendo utilities, aunque en menor medida.',
+            pd.to_datetime('2019-01-29'): 'PG&E (California) declara bancarrota debido a responsabilidades masivas por incendios forestales causados por sus equipos.',
+            pd.to_datetime('2020-03-11'): 'Pandemia de COVID-19 causa caídas iniciales en el mercado, aunque las utilities muestran resiliencia por su naturaleza esencial.',
+            pd.to_datetime('2021-02-15'): 'Fallo masivo de la red eléctrica de Texas durante una tormenta invernal extrema causa apagones generalizados y volatilidad en acciones de utilities texanas.',
+            pd.to_datetime('2022-03-16'): 'Inicio de subidas de tasas por la Fed para combatir la inflación, afectando a las utilities, sensibles a las tasas por su alta deuda y dividendos.',
+            pd.to_datetime('2022-08-16'): 'Firma de la Ley de Reducción de la Inflación en EE.UU., que incluye importantes incentivos para energías limpias, impactando la inversión de las utilities.',
+            pd.to_datetime('2023-01-01'): 'Evento hipotético: Nuevas normas de eficiencia energética o mandatos de energías renovables más estrictos.'
         }
     }
+
+# Puedes imprimir una muestra para verificar
+# for sector, sector_events in events.items():
+# print(f"\n--- {sector} ---")
+# for date, event_desc in sorted(sector_events.items()):
+# print(f"{date.strftime('%Y-%m-%d')}: {event_desc}")
     
     # Cargar el archivo y obtener la lista de sectores
     file_path = 'sector_log_returns.csv'
