@@ -139,12 +139,15 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticke
     """
     # Número de subplots: 1 para precios + número de niveles de detalles
     n_details = level  # cD1 a cD_level
-    fig, axes = plt.subplots(n_details + 1, 1, figsize=(14, 4 * (n_details + 1)), sharex=True)
+    # Altura del subplot de precios es 4, altura de detalles es 2 (la mitad)
+    heights = [4] + [2] * n_details
+    fig = plt.figure(figsize=(14, 4 + 2 * n_details))
+    gs = fig.add_gridspec(n_details + 1, 1, height_ratios=heights)
+    axes = [fig.add_subplot(gs[i]) for i in range(n_details + 1)]
     
     # Graficar precios acumulados
     ax_prices = axes[0]
     ax_prices.plot(cumulative_prices, linewidth=1.2)
-    ax_prices.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations', fontsize=18)
     ax_prices.set_ylabel('Price', fontsize=14)
     ax_prices.tick_params(axis='both', labelsize=12)
     
@@ -178,18 +181,20 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticke
         # Crear índice de fechas para los coeficientes
         coef_dates = base_index[::scale][:len(arr)]
         
-        # Graficar coeficientes
-        ax.plot(coef_dates, arr, label=coef_name, color='blue')
+        # Graficar coeficientes con el mismo color que las líneas verticales
+        color = palette[i - 1]  # Usar el color correspondiente de la paleta
+        ax.plot(coef_dates, arr, label=coef_name, color=color)
         ax.axhline(y=thr, color='red', linestyle='--', label='Threshold')
         ax.axhline(y=-thr, color='red', linestyle='--')
-        ax.set_title(f'Detail Coefficients {coef_name} with Threshold', fontsize=14)
-        ax.set_ylabel('Coefficient Value', fontsize=12)
-        ax.tick_params(axis='both', labelsize=10)
-        ax.legend(loc='upper right', fontsize=10)
+        #ax.set_ylabel(f'{coef_name}', fontsize=12)
+        #ax.tick_params(axis='both', labelsize=10)
+        #ax.legend(loc='upper right', fontsize=10)
+        if i != n_details:
+            ax.tick_params(axis='x', which='both', labelbottom=False)
     
     # Ajustar etiquetas y título
     axes[-1].set_xlabel('Date', fontsize=14)
-    fig.suptitle(f'Cumulative Price and Wavelet Coefficients for {ticker_name}', fontsize=20)
+    fig.suptitle(f'Cumulative Price and Wavelet Coefficients for {ticker_name}', fontsize=20, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}.png')
     plt.close()
