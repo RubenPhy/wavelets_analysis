@@ -312,12 +312,15 @@ def plot_d4_peak_returns_bins(log_returns, variability_series, percentile_thresh
     #plt.show()
     plt.close()
 
-def plot_critical_dates(df, sector='SP', events=None):
+def plot_critical_dates(df, log_returns, variability_series, percentile_threshold=95, sector='SP', events=None):
     """
-    Plot critical dates with vertical lines and event annotations.
+    Plot critical dates with vertical lines, event annotations, and D4 peak points.
 
     Parameters:
-    - df: pd.DataFrame, DataFrame with 'Date' and 'Frequency' columns
+    - df: pd.DataFrame, DataFrame with 'Date' column
+    - log_returns: pd.Series, log returns of the financial time series
+    - variability_series: dict, variability series for all levels (e.g., from compute_all_variability_series)
+    - percentile_threshold: int, percentile threshold for identifying peaks (default 95)
     - sector: str, sector name (default 'SP')
     - events: dict, dictionary of dates and corresponding event descriptions (default None)
     """
@@ -335,30 +338,46 @@ def plot_critical_dates(df, sector='SP', events=None):
             "2012-12-31": "Agreement to avoid \"fiscal cliff\""
         }
 
-    # Preparar datos (ajusta frecuencias según tu lógica)
+    # Compute D4 threshold and peak dates
+    d4_series = variability_series['D4']
+    threshold_d4 = np.percentile(d4_series.dropna(), percentile_threshold)
+    peak_dates = d4_series[d4_series > threshold_d4].index
+
+    # Count frequency of peak dates across all DWT levels
+    all_crossings = []
+    for level in ['D1', 'D2', 'D3', 'D4']:
+        crossings = variability_series[level][variability_series[level] > np.percentile(variability_series[level].dropna(), percentile_threshold)].index
+        all_crossings.extend(crossings)
+    frequency_counts = pd.Series(all_crossings).value_counts().reindex(df.index, fill_value=0)
+
+    # Prepare data for plotting
     dates = pd.to_datetime(list(events.keys()))
-    frequencies = [1.0] * len(events)  # Ejemplo, reemplaza con tus datos reales
-    df = pd.DataFrame({'Date': dates, 'Frequency': frequencies})
+    event_df = pd.DataFrame({'Date': dates, 'Frequency': [1.0] * len(events)})  # Base frequency for events
+    peak_df = pd.DataFrame({'Date': log_returns.index[list(peak_dates.values)], 'Frequency': frequency_counts.iloc[peak_dates]})
+
+    # Combine event and peak data
+    combined_df = pd.concat([event_df, peak_df]).drop_duplicates(subset='Date').sort_values('Date')
 
     # Crear el plot
     plt.figure(figsize=(12, 6))
-    plt.plot(df['Date'], df['Frequency'], 'o', color='gray', alpha=0.5)
+    plt.plot(combined_df['Date'], combined_df['Frequency'], 'o', color='gray', alpha=0.5, label='Peaks')
     plt.title(f'Detected Critical Dates - {sector}', fontsize=16, fontweight='bold')
     plt.xlabel('Date')
     plt.ylabel('Frequency')
-    plt.ylim(0, 3.0)
+    plt.ylim(0, max(combined_df['Frequency'].max() + 0.5, 3.0))  # Dynamic ylim based on max frequency
 
     # Añadir líneas verticales y anotaciones para cada evento
     for date, event in events.items():
         plt.axvline(x=pd.to_datetime(date), color='black', linestyle='--', alpha=0.5)
-        plt.text(pd.to_datetime(date), 2.5, event, rotation=90, verticalalignment='top', fontsize=10)
+        plt.text(pd.to_datetime(date), max(combined_df['Frequency'].max() + 0.1, 2.5), event, rotation=90, verticalalignment='top', fontsize=10)
 
-    # Añadir leyenda de detalles
+    # Añadir leyenda de detalles con colores basados en DWT levels
+    husl_colors = sns.color_palette('husl', 4)
     legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='red', label='Detail 1', markerfacecolor='red', markersize=10),
-        plt.Line2D([0], [0], marker='o', color='pink', label='Detail 2', markerfacecolor='pink', markersize=10),
-        plt.Line2D([0], [0], marker='o', color='green', label='Detail 3', markerfacecolor='green', markersize=10),
-        plt.Line2D([0], [0], marker='o', color='purple', label='Detail 4', markerfacecolor='purple', markersize=10)
+        plt.Line2D([0], [0], marker='o', color=husl_colors[0], label='Detail 1', markerfacecolor=husl_colors[0], markersize=10),
+        plt.Line2D([0], [0], marker='o', color=husl_colors[1], label='Detail 2', markerfacecolor=husl_colors[1], markersize=10),
+        plt.Line2D([0], [0], marker='o', color=husl_colors[2], label='Detail 3', markerfacecolor=husl_colors[2], markersize=10),
+        plt.Line2D([0], [0], marker='o', color=husl_colors[3], label='Detail 4', markerfacecolor=husl_colors[3], markersize=10)
     ]
     plt.legend(handles=legend_elements, loc='upper right')
 
@@ -409,3 +428,9 @@ if __name__ == "__main__":
 
         # Plot D4 peak returns bins for each sector
         plot_d4_peak_returns_bins(log_returns, variability_series['D4'], percentile_threshold=percentile_threshold, sector=sector, window=int(window_size/2))
+
+        # Plot critical dates specifically for S&P 500 sector
+        if sector == sectors[0]:  # Assuming the first sector is S&P 500
+            log_returns_sp, cumulative_prices_sp = load_and_prepare_data(file_path, column_name=sector)
+            variability_series_sp = compute_all_variability_series(log_returns_sp, window_size=window_size, level=level)
+            plot_returns_with_events(cumulative_prices_sp, variability_series_sp, ticker_name=sector, percentile_threshold=percentile_threshold)
