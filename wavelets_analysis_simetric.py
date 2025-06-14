@@ -209,57 +209,59 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     """
     fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
 
-    # Plot cumulative prices (coefficient band)
-    ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='blue')
+    # Plot cumulative prices (coefficient band) in black
+    ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='black')
     ax1.set_title(f'Cumulative Prices ({ticker_name})')
     ax1.set_ylabel('Price')
-    ax1.legend()
+    ax1.legend(loc='best')
 
-    # Plot D1, D2, D3, D4 variability series
+    # Plot D1, D2, D3, D4 variability series with individual thresholds
     ax2.plot(cumulative_prices.index, variability_series['D1'], label='D1', color='red')
+    threshold_d1 = np.percentile(variability_series['D1'].dropna(), percentile_threshold)
+    ax2.axhline(y=threshold_d1, color='black', linestyle='--', label=f'Threshold D1 ({percentile_threshold}th percentile)')
     ax2.set_title('D1 Variability')
     ax2.set_ylabel('Variability')
-    ax2.legend()
+    ax2.legend(loc='best')
 
     ax3.plot(cumulative_prices.index, variability_series['D2'], label='D2', color='green')
+    threshold_d2 = np.percentile(variability_series['D2'].dropna(), percentile_threshold)
+    ax3.axhline(y=threshold_d2, color='black', linestyle='--', label=f'Threshold D2 ({percentile_threshold}th percentile)')
     ax3.set_title('D2 Variability')
     ax3.set_ylabel('Variability')
-    ax3.legend()
+    ax3.legend(loc='best')
 
     ax4.plot(cumulative_prices.index, variability_series['D3'], label='D3', color='cyan')
+    threshold_d3 = np.percentile(variability_series['D3'].dropna(), percentile_threshold)
+    ax4.axhline(y=threshold_d3, color='black', linestyle='--', label=f'Threshold D3 ({percentile_threshold}th percentile)')
     ax4.set_title('D3 Variability')
     ax4.set_ylabel('Variability')
-    ax4.legend()
+    ax4.legend(loc='best')
 
     ax5.plot(cumulative_prices.index, variability_series['D4'], label='D4', color='purple')
+    threshold_d4 = np.percentile(variability_series['D4'].dropna(), percentile_threshold)
+    ax5.axhline(y=threshold_d4, color='black', linestyle='--', label=f'Threshold D4 ({percentile_threshold}th percentile)')
     ax5.set_title('D4 Variability')
     ax5.set_xlabel('Date')
     ax5.set_ylabel('Variability')
-    ax5.legend()
+    ax5.legend(loc='best')
 
-    # Compute threshold as percentile of all variability values
-    all_variability = pd.concat([variability_series['D1'], variability_series['D2'], 
-                                variability_series['D3'], variability_series['D4']]).dropna()
-    threshold = np.percentile(all_variability, percentile_threshold)
+    # Find indices where variability exceeds threshold for each level with distinct lines
+    thresholds = {'D1': threshold_d1, 'D2': threshold_d2, 'D3': threshold_d3, 'D4': threshold_d4}
+    colors = {'D1': 'red', 'D2': 'green', 'D3': 'cyan', 'D4': 'purple'}
 
-    # Add horizontal threshold line to all variability plots
-    for ax in [ax2, ax3, ax4, ax5]:
-        ax.axhline(y=threshold, color='black', linestyle='--', label=f'Threshold ({percentile_threshold}th percentile)')
-        ax.legend()
-
-    # Find indices where variability exceeds threshold at any level
-    threshold_crossings = []
-    for level in ['D1', 'D2', 'D3', 'D4']:
+    for level, threshold in thresholds.items():
         crossings = variability_series[level][variability_series[level] > threshold].index
-        threshold_crossings.extend(crossings)
-
-    # Add vertical lines to the price plot for threshold crossings
-    for date in sorted(set(threshold_crossings)):
-        ax1.axvline(x=date, color='red', linestyle='--', alpha=0.5)
+        for date in sorted(crossings):
+            ax1.axvline(x=cumulative_prices.index[date], color=colors[level], linestyle='--', alpha=0.5, label=f'{level} Crossing' if date == min(crossings) else "")
 
     # Set x-axis limits to match cumulative_prices
     for ax in [ax1, ax2, ax3, ax4, ax5]:
         ax.set_xlim(cumulative_prices.index[0], cumulative_prices.index[-1])
+
+    # Adjust legend to avoid duplication
+    handles, labels = ax1.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax1.legend(by_label.values(), by_label.keys(), loc='best')
 
     plt.tight_layout()
     plt.show()
