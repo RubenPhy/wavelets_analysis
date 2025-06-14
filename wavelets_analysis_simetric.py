@@ -151,7 +151,8 @@ def plot_variability_and_prices(log_returns, cumulative_prices, variability_seri
     ax2.legend()
 
     plt.tight_layout()
-    plt.show()
+    #plt.show()
+    plt.close()
 
 def compute_all_variability_series(time_series, window_size=32, wavelet='haar', level=4):
     """
@@ -215,7 +216,7 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
 
     # Plot cumulative prices (coefficient band) in black
     ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='black')
-    ax1.set_title(f'Cumulative Price and Wavelet Coefficients for {ticker_name} - Threshold: {percentile_threshold}th Percentile', fontsize=20, fontweight='bold')
+    ax1.set_title(f'Returns and Wavelet Coef. for {ticker_name} - Threshold: {percentile_threshold}th', fontsize=20, fontweight='bold')
 
     ax1.set_ylabel('Price')
     ax1.legend(loc='best')
@@ -253,39 +254,101 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     ax1.legend(by_label.values(), by_label.keys(), loc='best')
 
     plt.tight_layout()
-    # Save the plot as PNG in the 'plot' folder
-    os.makedirs('plot', exist_ok=True)
-    fig.savefig(os.path.join('plots', f'{ticker_name}_dwt_levels_threshold.png'), dpi=300)
-    plt.show()
+    # Save the plot as PNG in the 'plots' folder
+    os.makedirs('plots', exist_ok=True)
+    fig.savefig(os.path.join('plots', f'{ticker_name}_dwt_levels_threshold_{percentile_threshold}th.png'))
+    #plt.show()
+    plt.close()
 
+def plot_d4_peak_returns_bins(log_returns, variability_series, percentile_threshold=95, window=15, sector='SP'):
+    """
+    Plot the mean returns in bins from d-15 to d+15 around D4 peak dates.
+
+    Parameters:
+    - log_returns: pd.Series, log returns of the financial time series
+    - variability_series: pd.Series, normalized variability series for D4
+    - percentile_threshold: int, percentile threshold for identifying peaks (default 95)
+    - window: int, number of days before and after the peak to analyze (default 15)
+    """
+    # Compute threshold for D4
+    threshold_d4 = np.percentile(variability_series.dropna(), percentile_threshold)
+    
+    # Identify peak days where D4 exceeds threshold
+    peak_dates = variability_series[variability_series > threshold_d4].index
+    
+    # Initialize array to store returns for each relative day
+    relative_returns = np.zeros(2 * window +1)
+    count_days = np.zeros(2 * window + 1)
+    
+    for peak_idx in peak_dates:
+        # Ensure window fits within data bounds
+        start_idx = max(0, peak_idx - window)
+        end_idx = min(len(log_returns), peak_idx + window + 1)
+        
+        window_returns = log_returns.iloc[start_idx:end_idx]
+        if len(window_returns) >= (2 * window + 1):
+            for i, ret in enumerate(window_returns):
+                rel_day = i - window  # Relative day from -window to +window
+                if 0 <= rel_day + window < 2 * window + 1:
+                    relative_returns[rel_day + window] += ret
+                    count_days[rel_day + window] += 1
+    
+    # Compute mean returns for each bin
+    mean_returns = relative_returns / count_days
+    days = np.arange(-window, window + 1)
+    
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.bar(days, mean_returns, color='blue', width=0.8)
+    plt.axvline(x=0, color='red', linestyle='--', label='Peak Day')
+    plt.title(f'Mean Returns Around D4 Peaks (d-{window} to d+{window})\nSector: {sector}, Threshold: {percentile_threshold}th Percentile')
+    plt.xlabel('Days Relative to Peak (d)')
+    plt.ylabel('Mean Log Return')
+    plt.legend()
+    plt.grid(True)
+    # Save the plot as PNG in the 'plots' folder, including sector name and percentile in the filename
+    os.makedirs('plots', exist_ok=True)
+    plt.savefig(os.path.join('plots', f'd4_peak_returns_bins_{sector}_{percentile_threshold}th.png'))
+    #plt.show()
+    plt.close()
 
 if __name__ == "__main__":
     ticker_name = 'SP'
     file_path = 'sector_log_returns.csv'
     level = 4
-    top_pct = 3
+    top_pct = 1
     window_size = 32
-    threshold_energy_retain = 0.4
-    percentile_threshold = 99
+    percentile_threshold = 100 - top_pct
     
-    log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
+    # log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
     
-    # Compute variability series (level 4, window size 32)
-    variability_series = compute_variability_series(log_returns, window_size=window_size, level=level)
+    # # Compute variability series (level 4, window size 32)
+    # variability_series = compute_variability_series(log_returns, window_size=window_size, level=level)
 
-    # Plot results
-    plot_variability_and_prices(log_returns, cumulative_prices, variability_series, ticker_name)
+    # # Plot results
+    # plot_variability_and_prices(log_returns, cumulative_prices, variability_series, ticker_name)
 
-    # Alternative: Compute with level 3, window size 16
-    level_alt = 3
-    window_size_alt = 16
-    variability_series_alt = compute_variability_series(log_returns, window_size=window_size_alt, level=level_alt)
+    # # Alternative: Compute with level 3, window size 16
+    # level_alt = 3
+    # window_size_alt = 16
+    # variability_series_alt = compute_variability_series(log_returns, window_size=window_size_alt, level=level_alt)
 
-    # Plot alternative results
-    plot_variability_and_prices(log_returns, cumulative_prices, variability_series_alt, ticker_name)
+    # # Plot alternative results
+    # plot_variability_and_prices(log_returns, cumulative_prices, variability_series_alt, ticker_name)
 
-    # Compute variability series for all levels up to 4
-    variability_series = compute_all_variability_series(log_returns, window_size=window_size, level=level)
+    # Load data for all sectors
+    df = pd.read_csv(file_path, index_col='Date', parse_dates=True)
+    sectors = [col for col in df.columns if col != 'log_return']
+    
+    for sector in sectors:
+        print(f"Processing sector: {sector}")
+        log_returns, cumulative_prices = load_and_prepare_data(file_path, column_name=sector)
+        
+        # Compute variability series for all levels up to 4
+        variability_series = compute_all_variability_series(log_returns, window_size=window_size, level=level)
 
-    # Plot results
-    plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_series, ticker_name, percentile_threshold)
+        # Plot and save results for each sector
+        plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_series, ticker_name=sector, percentile_threshold=percentile_threshold)
+
+        # Plot D4 peak returns bins for each sector
+        plot_d4_peak_returns_bins(log_returns, variability_series['D4'], percentile_threshold=percentile_threshold, sector=sector, window=int(window_size/2))
