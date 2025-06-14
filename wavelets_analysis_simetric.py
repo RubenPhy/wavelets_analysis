@@ -312,6 +312,63 @@ def plot_d4_peak_returns_bins(log_returns, variability_series, percentile_thresh
     #plt.show()
     plt.close()
 
+def plot_critical_dates(df, sector='SP', events=None):
+    """
+    Plot critical dates with vertical lines and event annotations.
+
+    Parameters:
+    - df: pd.DataFrame, DataFrame with 'Date' and 'Frequency' columns
+    - sector: str, sector name (default 'SP')
+    - events: dict, dictionary of dates and corresponding event descriptions (default None)
+    """
+    if events is None:
+        events = {
+            "2020-03-16": "Panic due to COVID-19 pandemic",
+            "2019-08-23": "Escalation of trade war with China",
+            "2018-12-24": "Drop due to Fed fears",
+            "2018-02-05": "Volatility collapse (\"Volmageddon\")",
+            "2017-11-29": "Massive tech sector sell-off",
+            "2016-06-24": "Surprise from Brexit result",
+            "2015-08-24": "Concerns over Chinese economy",
+            "2014-12-01": "Worry over oil price drop",
+            "2013-06-20": "Announcement of stimulus withdrawal",
+            "2012-12-31": "Agreement to avoid \"fiscal cliff\""
+        }
+
+    # Preparar datos (ajusta frecuencias según tu lógica)
+    dates = pd.to_datetime(list(events.keys()))
+    frequencies = [1.0] * len(events)  # Ejemplo, reemplaza con tus datos reales
+    df = pd.DataFrame({'Date': dates, 'Frequency': frequencies})
+
+    # Crear el plot
+    plt.figure(figsize=(12, 6))
+    plt.plot(df['Date'], df['Frequency'], 'o', color='gray', alpha=0.5)
+    plt.title(f'Detected Critical Dates - {sector}', fontsize=16, fontweight='bold')
+    plt.xlabel('Date')
+    plt.ylabel('Frequency')
+    plt.ylim(0, 3.0)
+
+    # Añadir líneas verticales y anotaciones para cada evento
+    for date, event in events.items():
+        plt.axvline(x=pd.to_datetime(date), color='black', linestyle='--', alpha=0.5)
+        plt.text(pd.to_datetime(date), 2.5, event, rotation=90, verticalalignment='top', fontsize=10)
+
+    # Añadir leyenda de detalles
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='red', label='Detail 1', markerfacecolor='red', markersize=10),
+        plt.Line2D([0], [0], marker='o', color='pink', label='Detail 2', markerfacecolor='pink', markersize=10),
+        plt.Line2D([0], [0], marker='o', color='green', label='Detail 3', markerfacecolor='green', markersize=10),
+        plt.Line2D([0], [0], marker='o', color='purple', label='Detail 4', markerfacecolor='purple', markersize=10)
+    ]
+    plt.legend(handles=legend_elements, loc='upper right')
+
+    plt.tight_layout()
+    # Save the plot as PNG in the 'plots' folder
+    os.makedirs('plots', exist_ok=True)
+    plt.savefig(os.path.join('plots', f'critical_dates_{sector}.png'))
+    #plt.show()
+    plt.close()
+
 if __name__ == "__main__":
     ticker_name = 'SP'
     file_path = 'sector_log_returns.csv'
