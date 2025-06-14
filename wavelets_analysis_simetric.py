@@ -160,9 +160,14 @@ def compute_all_variability_series(time_series, window_size=32, wavelet='haar', 
     half_window = window_size // 2
     start_t = half_window
     end_t = len(time_series) - half_window + 1
-    variability_series = {f'D{i}': np.zeros(len(time_series)) for i in range(1, level + 1)}
-    for key in variability_series:
-        variability_series[key][:] = np.nan
+    variability_series = {}
+
+    # Initialize series with proper index if time_series is a pd.Series
+    if isinstance(time_series, pd.Series):
+        index = time_series.index
+        variability_series = {f'D{i}': pd.Series(np.full(len(time_series), np.nan), index=index) for i in range(1, level + 1)}
+    else:
+        variability_series = {f'D{i}': np.full(len(time_series), np.nan) for i in range(1, level + 1)}
 
     for t in range(start_t, end_t):
         try:
@@ -179,14 +184,21 @@ def compute_all_variability_series(time_series, window_size=32, wavelet='haar', 
                     variability = 0
                 A_i = coeffs[0] if i == 1 else coeffs[i - 1]  # Approximation for normalization
                 A_i_mean = np.mean(np.abs(A_i)) if len(A_i) > 0 else 1
-                variability_series[f'D{i}'][t] = variability / A_i_mean if A_i_mean != 0 else 0
+                normalized_variability = variability / A_i_mean if A_i_mean != 0 else 0
+                if isinstance(time_series, pd.Series):
+                    variability_series[f'D{i}'][t] = normalized_variability
+                else:
+                    variability_series[f'D{i}'][t] = normalized_variability
         except ValueError:
             continue
 
     if isinstance(time_series, pd.Series):
         for key in variability_series:
             variability_series[key] = pd.Series(variability_series[key], index=time_series.index, name=key)
-    
+    else:
+        for key in variability_series:
+            variability_series[key] = pd.Series(variability_series[key], name=key)
+
     return variability_series
 
 
@@ -194,13 +206,6 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     """
     Plot the cumulative prices and DWT detail coefficients (D1, D2, D3, D4) with a percentile-based threshold
     and vertical lines for threshold crossings.
-
-    Parameters:
-    - log_returns: pd.Series, log returns of the financial time series
-    - cumulative_prices: pd.Series, cumulative prices
-    - variability_series: dict, variability series for each DWT level (D1, D2, D3, D4)
-    - ticker_name: str, name of the ticker (default 'SP')
-    - percentile_threshold: float, percentile for the threshold (default 95)
     """
     fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
 
@@ -211,22 +216,22 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     ax1.legend()
 
     # Plot D1, D2, D3, D4 variability series
-    ax2.plot(variability_series['D1'].index, variability_series['D1'], label='D1', color='red')
+    ax2.plot(cumulative_prices.index, variability_series['D1'], label='D1', color='red')
     ax2.set_title('D1 Variability')
     ax2.set_ylabel('Variability')
     ax2.legend()
 
-    ax3.plot(variability_series['D2'].index, variability_series['D2'], label='D2', color='green')
+    ax3.plot(cumulative_prices.index, variability_series['D2'], label='D2', color='green')
     ax3.set_title('D2 Variability')
     ax3.set_ylabel('Variability')
     ax3.legend()
 
-    ax4.plot(variability_series['D3'].index, variability_series['D3'], label='D3', color='cyan')
+    ax4.plot(cumulative_prices.index, variability_series['D3'], label='D3', color='cyan')
     ax4.set_title('D3 Variability')
     ax4.set_ylabel('Variability')
     ax4.legend()
 
-    ax5.plot(variability_series['D4'].index, variability_series['D4'], label='D4', color='purple')
+    ax5.plot(cumulative_prices.index, variability_series['D4'], label='D4', color='purple')
     ax5.set_title('D4 Variability')
     ax5.set_xlabel('Date')
     ax5.set_ylabel('Variability')
@@ -252,7 +257,10 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     for date in sorted(set(threshold_crossings)):
         ax1.axvline(x=date, color='red', linestyle='--', alpha=0.5)
 
-    # Adjust layout
+    # Set x-axis limits to match cumulative_prices
+    for ax in [ax1, ax2, ax3, ax4, ax5]:
+        ax.set_xlim(cumulative_prices.index[0], cumulative_prices.index[-1])
+
     plt.tight_layout()
     plt.show()
 
@@ -264,7 +272,7 @@ if __name__ == "__main__":
     top_pct = 3
     window_size = 32
     threshold_energy_retain = 0.4
-    percentile_threshold = 95
+    percentile_threshold = 98
     
     log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
     
