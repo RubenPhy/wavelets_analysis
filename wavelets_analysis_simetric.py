@@ -199,36 +199,53 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticke
     plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}.png')
     plt.close()
 
-def compute_H_series(log_returns, coeffs, level):
+def compute_H_series_window(log_returns, level=4, window_size=16):
     """
-    Calcula las series H_i(t) para diferentes niveles.
+    Calcula las series H_i(t) usando una ventana simétrica de tamaño window_size para cada t.
 
     Parameters:
     - log_returns (pd.Series): Serie de log returns.
-    - coeffs (list): Coeficientes wavelet.
     - level (int): Nivel máximo de descomposición.
+    - window_size (int): Tamaño de la ventana (debe ser potencia de 2).
 
     Returns:
-    - H_series (dict): Diccionario con series H_i(t).
-    - detail_reconstructed_series (dict): Series de detalles reconstruidos.
+    - H_series (dict): Diccionario con series H_i(t) para i=1 a level.
+    - detail_reconstructed_series (dict): Diccionario con series de detalles reconstruidos D_j para cada i y t.
     """
-    H_series = {}
-    detail_reconstructed_series = {}
-    for i in range(1, level + 1):
-        abs_detail_sum = np.zeros_like(log_returns.values, dtype=float)
-        detail_reconstructed_series[i] = {}
-        for j in range(1, i + 1):
-            idx_coeff = level - j + 1
-            rec_coeff_list = [np.zeros_like(coeffs[0])] + [
-                coeffs[k] if k == idx_coeff else np.zeros_like(coeffs[k]) for k in range(1, len(coeffs))]
-            detail_rec = pywt.waverec(rec_coeff_list, 'haar', mode='periodization')[:len(abs_detail_sum)]
-            abs_detail_sum += np.abs(detail_rec)
-            detail_reconstructed_series[i][j] = detail_rec
+    N = len(log_returns)
+    half_window = window_size // 2  # Para window_size=16, half_window=8
+    H_series = {i: np.zeros(N) for i in range(1, level + 1)}
+    detail_reconstructed_series = {i: {j: np.zeros(N) for j in range(1, i + 1)} for i in range(1, level + 1)}
+    
+    for t in range(half_window - 1, N - half_window + 1):
+        # Construir la ventana simétrica: [x(t-7), ..., x(t), x(t), ..., x(t-7)]
+        left = log_returns.values[t - (half_window - 1):t + 1]  # Desde t-7 hasta t
+        if len(left) < half_window:
+            left = np.pad(left, (half_window - len(left), 0), mode='reflect')
+        window = np.concatenate([left, left[::-1]])  # Simetrizar: 8 valores + 8 reflejados = 16
         
-        approx_coeff_list = [coeffs[0]] + [np.zeros_like(c) for c in coeffs[1:]]
-        approx = pywt.waverec(approx_coeff_list, 'haar', mode='periodization')[:len(abs_detail_sum)]
-        approx = np.where(approx == 0, 1e-10, approx)
-        H_series[i] = abs_detail_sum / approx
+        # Aplicar transformada wavelet
+        coeffs = pywt.wavedec(window, 'haar', level=level, mode='periodization')
+        
+        # Calcular detalles y aproximación para cada nivel i
+        for i in range(1, level + 1):
+            sum_abs_details = 0
+            for j in range(1, i + 1):
+                rec_coeff_list = [np.zeros_like(coeffs[0])] + [
+                    coeffs[k] if k == level - j + 1 else np.zeros_like(coeffs[k]) for k in range(1, len(coeffs))]
+                detail_rec = pywt.waverec(rec_coeff_list, 'haar', mode='periodization')[:window_size]
+                center = half_window - 1  # Índice central (7 para window_size=16)
+                detail_reconstructed_series[i][j][t] = detail_rec[center]  # Guardar detalle en t
+                sum_abs_details += np.abs(detail_rec[center])
+            
+            # Calcular aproximación A_4
+            approx_coeff_list = [coeffs[0]] + [np.zeros_like(c) for c in coeffs[1:]]
+            approx = pywt.waverec(approx_coeff_list, 'haar', mode='periodization')[:window_size]
+            approx_center = approx[center] if approx[center] != 0 else 1e-10  # Evitar división por cero
+            
+            # Calcular H_i(t)
+            H_series[i][t] = sum_abs_details / approx_center
+    
     return H_series, detail_reconstructed_series
 
 def plot_H_series_with_details(H_series, detail_reconstructed_series, cumulative_prices, ticker_name, level):
@@ -550,7 +567,7 @@ if __name__ == "__main__":
     extreme_dates = extract_extreme_dates(coeffs, level, log_returns.index, top_pct)
     plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
     plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, log_returns.index)
-    H_series, detail_series = compute_H_series(log_returns, coeffs, level)
+    H_series, detail_series = compute_H_series_window(log_returns, level=level)
     plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
     energy_series = compute_mobile_energy(H_series, window_size)
     plot_mobile_energy(energy_series, cumulative_prices, ticker_name, window_size)
