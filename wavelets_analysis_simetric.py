@@ -37,543 +37,253 @@ def load_and_prepare_data(file_path, column_name=None, initial_price=1):
     n_adjusted = 2**int(np.log2(n))
     return df_log_ret.iloc[:n_adjusted], cumulative_prices.iloc[:n_adjusted]
 
-def wavelet_decomposition(log_returns, wavelet='haar', level=4):
+def compute_normalized_variability(time_series, t, window_size=32, wavelet='haar', level=4):
     """
-    Realiza la descomposición wavelet de los log returns.
+    Compute the normalized variability indicator for a financial time series at time t
+    using Haar DWT at specified level with a given window size, as per the theoretical framework.
 
     Parameters:
-    - log_returns (pd.Series): Serie de log returns.
-    - wavelet (str): Tipo de wavelet a usar (default: 'haar').
-    - level (int): Nivel máximo de descomposición.
+    - time_series: numpy array or pd.Series, the input financial time series (e.g., log returns)
+    - t: int, the time index at which to compute the indicator
+    - window_size: int, size of the moving window (must be a power of 2, default 32)
+    - wavelet: str, wavelet type (default 'haar')
+    - level: int, DWT decomposition level (default 4)
 
     Returns:
-    - coeffs (list): Lista de coeficientes wavelet [cA_level, cD_level, ..., cD_1].
+    - normalized_variability: float, the normalized variability indicator at time t
     """
-    return pywt.wavedec(log_returns.values, wavelet, level=level, mode='periodization')
+    # Convert time_series to numpy array if it's a pandas Series
+    time_series = np.asarray(time_series)
+    
+    # Step 1: Select a moving window (power of 2)
+    if not (window_size & (window_size - 1) == 0):
+        raise ValueError("Window size must be a power of 2.")
+    half_window = window_size // 2
 
-def plot_wavelet_coefficients(coeffs, level, ticker_name):
+    # Validate time index t
+    if t < half_window or t >= len(time_series) - half_window + 1:
+        raise ValueError("Time index t is out of bounds for the given time series and window size.")
+
+    # Step 2: Symmetrize the signal around time t
+    # Form: [x(t-15), ..., x(t-1), x(t), x(t), x(t-1), ..., x(t-15)] for window_size=32
+    left = time_series[t - half_window:t]  # x(t-15), ..., x(t-1)
+    right = time_series[t - half_window + 1:t + 1][::-1]  # x(t), x(t-1), ..., x(t-15)
+    symmetrized_signal = np.concatenate([left, right])
+
+    # Verify symmetrized signal length
+    if len(symmetrized_signal) != window_size:
+        raise ValueError(f"Symmetrized signal length ({len(symmetrized_signal)}) does not match window size ({window_size}).")
+
+    # Step 3: Apply Haar DWT to obtain detail coefficients at specified level
+    coeffs = pywt.wavedec(symmetrized_signal, wavelet=wavelet, level=level, mode='symmetric')
+    # coeffs[0] is A^level (approximation), coeffs[1] is D^level, coeffs[2] is D^(level-1), ...
+    D_level = coeffs[1]  # Detail coefficients at specified level
+
+    # Compute variability of D^level using: (1/(k2 - k1 + 1)) * sum(|x_{j+1} - x_j|)
+    if len(D_level) > 1:
+        variability = np.sum(np.abs(np.diff(D_level))) / len(D_level)
+    else:
+        variability = 0  # Handle case where D_level is too short
+
+    # Step 4: Normalize variability with the mean of A^level (approximation coefficients)
+    A_level = coeffs[0]  # Approximation coefficients at specified level
+    A_level_mean = np.mean(np.abs(A_level)) if len(A_level) > 0 else 1  # Use absolute mean
+
+    # Compute normalized variability
+    normalized_variability = variability / A_level_mean if A_level_mean != 0 else 0
+
+    return normalized_variability
+
+def compute_variability_series(time_series, window_size=32, wavelet='haar', level=4):
     """
-    Genera y guarda gráficos de los coeficientes wavelet.
+    Compute the normalized variability indicator for the entire time series.
 
     Parameters:
-    - coeffs (list): Coeficientes wavelet.
-    - level (int): Nivel máximo de descomposición.
-    - ticker_name (str): Nombre del ticker para el nombre del archivo.
-    """
-    fig, axs = plt.subplots(len(coeffs), 1, figsize=(12, 10), sharex=False)
-    axs[0].plot(coeffs[0])
-    axs[0].set_title(f'Approximation Coefficients (cA{level})', fontsize=18)
-    axs[0].tick_params(axis='both', labelsize=14)
-    for i in range(1, len(coeffs)):
-        axs[i].plot(coeffs[i])
-        axs[i].set_title(f'Detail Coefficients (cD{level - i + 1})', fontsize=18)
-        axs[i].tick_params(axis='both', labelsize=14)
-    fig.suptitle('Wavelet Coefficients of Log Returns', fontsize=22)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}.png')
-    plt.close()
-
-def extract_extreme_dates(coeffs, level, base_index, top_pct=5):
-    """
-    Identifica fechas con oscilaciones extremas en los coeficientes wavelet.
-
-    Parameters:
-    - coeffs (list): Coeficientes wavelet.
-    - level (int): Nivel máximo de descomposición.
-    - base_index (pd.Index): Índice temporal de la serie original.
-    - top_pct (float): Porcentaje superior de oscilaciones a considerar.
+    - time_series: numpy array or pd.Series, the input financial time series
+    - window_size: int, size of the moving window (default 32)
+    - wavelet: str, wavelet type (default 'haar')
+    - level: int, DWT decomposition level (default 4)
 
     Returns:
-    - dict: Diccionario {coef_name: DatetimeIndex} con fechas extremas.
+    - variability_series: pd.Series, normalized variability for each valid time point
     """
-    extreme_dates = {}
-    for i, arr in enumerate(coeffs):
-        name = f'cA{level}' if i == 0 else f'cD{level - i + 1}'
-        scale = 2**level if i == 0 else 2**(level - i + 1)
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
-        idx = np.where(np.abs(arr) >= thr)[0]
-        pos = np.minimum(idx * scale, len(base_index) - 1)
-        extreme_dates[name] = base_index[pos]
-    return extreme_dates
+    half_window = window_size // 2
+    start_t = half_window
+    end_t = time_series.size - half_window + 1
+    variability_series = np.zeros(time_series.size)  # Initialize with zeros
+    variability_series[:] = np.nan  # Initialize with NaN for invalid indices
 
-def plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct):
+    for t in range(start_t, end_t):
+        try:
+            variability_series[t] = compute_normalized_variability(
+                time_series, t, window_size, wavelet, level
+            )
+        except ValueError:
+            continue  # Skip invalid indices
+
+    # Convert to pandas Series with same index as input if available
+    return pd.Series(variability_series, index=time_series.index, name='Variability')
+
+def plot_variability_and_prices(log_returns, cumulative_prices, variability_series, ticker_name='SP'):
     """
-    Grafica precios acumulados con líneas verticales en fechas extremas.
+    Plot the log returns, cumulative prices, and normalized variability series.
 
     Parameters:
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - extreme_dates (dict): Diccionario de fechas extremas.
-    - ticker_name (str): Nombre del ticker.
-    - top_pct (float): Porcentaje superior usado.
+    - log_returns: pd.Series, log returns of the financial time series
+    - cumulative_prices: pd.Series, cumulative prices
+    - variability_series: pd.Series, normalized variability series
+    - ticker_name: str, name of the ticker (default 'SP')
     """
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(cumulative_prices, linewidth=1.2)
-    ax.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations', fontsize=22)
-    ax.set_ylabel('Price', fontsize=18)
-    ax.set_xlabel('Date', fontsize=18)
-    ax.tick_params(axis='both', labelsize=15)
-    
-    palette = sns.color_palette('husl', n_colors=len(extreme_dates))
-    for (coef_name, dates), color in zip(extreme_dates.items(), palette):
-        for date in dates:
-            ax.axvline(date, color=color, linewidth=1.0, linestyle='--', alpha=0.7)
-    
-    handles = [Line2D([0], [0], color=c, lw=3, linestyle='--', label=n) 
-               for (n, _), c in zip(extreme_dates.items(), palette)]
-    ax.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=14, title_fontsize=15)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+    # Plot cumulative prices
+    ax1.plot(cumulative_prices.index, cumulative_prices, label='Cumulative Price', color='blue')
+    ax1.set_title(f'Cumulative Prices ({ticker_name})')
+    ax1.set_ylabel('Price')
+    ax1.legend()
+
+    # Plot variability series
+    ax2.plot(variability_series.index, variability_series, label='Normalized Variability', color='red')
+    ax2.set_title(f'Normalized Variability (DWT Level {level}, Window Size {window_size})')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('Variability')
+    ax2.legend()
+
     plt.tight_layout()
-    plt.savefig(f'plots/dates_with_highest_coeff_{ticker_name}.png')
-    plt.close()
+    plt.show()
 
-def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, base_index):
+def compute_all_variability_series(time_series, window_size=32, wavelet='haar', level=4):
     """
-    Grafica precios acumulados con líneas verticales en fechas extremas y subplots de coeficientes wavelet con umbrales.
+    Compute the normalized variability indicator for the entire time series at all levels up to the specified level.
+    """
+    time_series = np.asarray(time_series)
+    half_window = window_size // 2
+    start_t = half_window
+    end_t = len(time_series) - half_window + 1
+    variability_series = {f'D{i}': np.zeros(len(time_series)) for i in range(1, level + 1)}
+    for key in variability_series:
+        variability_series[key][:] = np.nan
+
+    for t in range(start_t, end_t):
+        try:
+            # Compute DWT coefficients for the symmetrized window
+            left = time_series[t - half_window:t]
+            right = time_series[t - half_window + 1:t + 1][::-1]
+            symmetrized_signal = np.concatenate([left, right])
+            coeffs = pywt.wavedec(symmetrized_signal, wavelet=wavelet, level=level, mode='symmetric')
+            for i in range(1, level + 1):
+                D_i = coeffs[i]  # Detail coefficients at level i
+                if len(D_i) > 1:
+                    variability = np.sum(np.abs(np.diff(D_i))) / len(D_i)
+                else:
+                    variability = 0
+                A_i = coeffs[0] if i == 1 else coeffs[i - 1]  # Approximation for normalization
+                A_i_mean = np.mean(np.abs(A_i)) if len(A_i) > 0 else 1
+                variability_series[f'D{i}'][t] = variability / A_i_mean if A_i_mean != 0 else 0
+        except ValueError:
+            continue
+
+    if isinstance(time_series, pd.Series):
+        for key in variability_series:
+            variability_series[key] = pd.Series(variability_series[key], index=time_series.index, name=key)
+    
+    return variability_series
+
+
+def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_series, ticker_name='SP', percentile_threshold=95):
+    """
+    Plot the cumulative prices and DWT detail coefficients (D1, D2, D3, D4) with a percentile-based threshold
+    and vertical lines for threshold crossings.
 
     Parameters:
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - coeffs (list): Coeficientes wavelet [cA_level, cD_level, ..., cD_1].
-    - level (int): Nivel máximo de descomposición.
-    - ticker_name (str): Nombre del ticker.
-    - top_pct (float): Porcentaje superior para umbrales.
-    - base_index (pd.Index): Índice temporal de la serie original.
+    - log_returns: pd.Series, log returns of the financial time series
+    - cumulative_prices: pd.Series, cumulative prices
+    - variability_series: dict, variability series for each DWT level (D1, D2, D3, D4)
+    - ticker_name: str, name of the ticker (default 'SP')
+    - percentile_threshold: float, percentile for the threshold (default 95)
     """
-    # Número de subplots: 1 para precios + número de niveles de detalles
-    n_details = level  # cD1 a cD_level
-    # Altura del subplot de precios es 4, altura de detalles es 2 (la mitad)
-    heights = [4] + [2] * n_details
-    fig = plt.figure(figsize=(14, 4 + 2 * n_details))
-    gs = fig.add_gridspec(n_details + 1, 1, height_ratios=heights)
-    axes = [fig.add_subplot(gs[i]) for i in range(n_details + 1)]
-    
-    # Graficar precios acumulados
-    ax_prices = axes[0]
-    ax_prices.plot(cumulative_prices, linewidth=1.2)
-    ax_prices.set_ylabel('Price', fontsize=14)
-    ax_prices.tick_params(axis='both', labelsize=12)
-    
-    # Añadir líneas verticales para fechas extremas (calculadas de coeffs)
-    extreme_dates = {}
-    for k in range(1, level + 1):
-        arr = coeffs[level - k + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
-        scale = 2**k
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
-        ind = np.where(np.abs(arr) >= thr)[0]
-        extreme_dates[f'cD{k}'] = base_index[::scale][ind]
-    
-    palette = sns.color_palette('husl', n_colors=len(extreme_dates))
-    for (coef_name, dates), color in zip(extreme_dates.items(), palette):
-        for date in dates:
-            ax_prices.axvline(date, color=color, linewidth=1.0, linestyle='--', alpha=0.7)
-    
-    # Leyenda para precios
-    handles = [Line2D([0], [0], color=c, lw=3, linestyle='--', label=n) 
-               for (n, _), c in zip(extreme_dates.items(), palette)]
-    ax_prices.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=12, title_fontsize=13)
-    
-    # Graficar coeficientes wavelet con umbrales
-    for i in range(1, n_details + 1):  # cD1 a cD_level
-        ax = axes[i]
-        coef_name = f'cD{i}'
-        arr = coeffs[level - i + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
-        scale = 2**i
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
-        
-        # Crear índice de fechas para los coeficientes
-        coef_dates = base_index[::scale][:len(arr)]
-        
-        # Graficar coeficientes con el mismo color que las líneas verticales
-        color = palette[i - 1]  # Usar el color correspondiente de la paleta
-        ax.plot(coef_dates, arr, label=coef_name, color=color)
-        ax.axhline(y=thr, color='red', linestyle='--', label='Threshold')
-        ax.axhline(y=-thr, color='red', linestyle='--')
-        #ax.set_ylabel(f'{coef_name}', fontsize=12)
-        #ax.tick_params(axis='both', labelsize=10)
-        #ax.legend(loc='upper right', fontsize=10)
-        if i != n_details:
-            ax.tick_params(axis='x', which='both', labelbottom=False)
-    
-    # Ajustar etiquetas y título
-    axes[-1].set_xlabel('Date', fontsize=14)
-    fig.suptitle(f'Cumulative Price and Wavelet Coefficients for {ticker_name}', fontsize=20, fontweight='bold')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}.png')
-    plt.close()
+    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
 
-def compute_H_series_window(log_returns, level=4, window_size=16):
-    """
-    Calcula las series H_i(t) usando una ventana simétrica de tamaño window_size para cada t.
+    # Plot cumulative prices (coefficient band)
+    ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='blue')
+    ax1.set_title(f'Cumulative Prices ({ticker_name})')
+    ax1.set_ylabel('Price')
+    ax1.legend()
 
-    Parameters:
-    - log_returns (pd.Series): Serie de log returns.
-    - level (int): Nivel máximo de descomposición.
-    - window_size (int): Tamaño de la ventana (debe ser potencia de 2).
+    # Plot D1, D2, D3, D4 variability series
+    ax2.plot(variability_series['D1'].index, variability_series['D1'], label='D1', color='red')
+    ax2.set_title('D1 Variability')
+    ax2.set_ylabel('Variability')
+    ax2.legend()
 
-    Returns:
-    - H_series (dict): Diccionario con series H_i(t) para i=1 a level.
-    - detail_reconstructed_series (dict): Diccionario con series de detalles reconstruidos D_j para cada i y t.
-    """
-    N = len(log_returns)
-    half_window = window_size // 2  # Para window_size=16, half_window=8
-    H_series = {i: np.zeros(N) for i in range(1, level + 1)}
-    detail_reconstructed_series = {i: {j: np.zeros(N) for j in range(1, i + 1)} for i in range(1, level + 1)}
-    
-    for t in range(half_window - 1, N - half_window + 1):
-        # Construir la ventana simétrica: [x(t-7), ..., x(t), x(t), ..., x(t-7)]
-        left = log_returns.values[t - (half_window - 1):t + 1]  # Desde t-7 hasta t
-        if len(left) < half_window:
-            left = np.pad(left, (half_window - len(left), 0), mode='reflect')
-        window = np.concatenate([left, left[::-1]])  # Simetrizar: 8 valores + 8 reflejados = 16
-        
-        # Aplicar transformada wavelet
-        coeffs = pywt.wavedec(window, 'haar', level=level, mode='periodization')
-        
-        # Calcular detalles y aproximación para cada nivel i
-        for i in range(1, level + 1):
-            sum_abs_details = 0
-            for j in range(1, i + 1):
-                rec_coeff_list = [np.zeros_like(coeffs[0])] + [
-                    coeffs[k] if k == level - j + 1 else np.zeros_like(coeffs[k]) for k in range(1, len(coeffs))]
-                detail_rec = pywt.waverec(rec_coeff_list, 'haar', mode='periodization')[:window_size]
-                center = half_window - 1  # Índice central (7 para window_size=16)
-                detail_reconstructed_series[i][j][t] = detail_rec[center]  # Guardar detalle en t
-                sum_abs_details += np.abs(detail_rec[center])
-            
-            # Calcular aproximación A_4
-            approx_coeff_list = [coeffs[0]] + [np.zeros_like(c) for c in coeffs[1:]]
-            approx = pywt.waverec(approx_coeff_list, 'haar', mode='periodization')[:window_size]
-            approx_center = approx[center] if approx[center] != 0 else 1e-10  # Evitar división por cero
-            
-            # Calcular H_i(t)
-            H_series[i][t] = sum_abs_details / approx_center
-    
-    return H_series, detail_reconstructed_series
+    ax3.plot(variability_series['D2'].index, variability_series['D2'], label='D2', color='green')
+    ax3.set_title('D2 Variability')
+    ax3.set_ylabel('Variability')
+    ax3.legend()
 
-def plot_H_series_with_details(H_series, detail_reconstructed_series, cumulative_prices, ticker_name, level):
-    """
-    Genera gráficos de H_i(t) con detalles y precios acumulados.
+    ax4.plot(variability_series['D3'].index, variability_series['D3'], label='D3', color='cyan')
+    ax4.set_title('D3 Variability')
+    ax4.set_ylabel('Variability')
+    ax4.legend()
 
-    Parameters:
-    - H_series (dict): Series H_i(t).
-    - detail_reconstructed_series (dict): Series de detalles reconstruidos.
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - ticker_name (str): Nombre del ticker.
-    - level (int): Nivel máximo de descomposición.
-    """
-    for i in range(1, level + 1):
-        n_subplots = i + 1
-        fig, axes = plt.subplots(n_subplots, 1, figsize=(14, 4 * n_subplots), sharex=True)
-        if n_subplots == 1:
-            axes = [axes]
-        
-        for j in range(1, i + 1):
-            ax1 = axes[j - 1]
-            ax2 = ax1.twinx()
-            detail_series = pd.Series(detail_reconstructed_series[i][j], index=cumulative_prices.index)
-            sns.lineplot(data=detail_series, ax=ax1, color="green", label=f"Detail D{j}", alpha=0.65)
-            ax2.plot(cumulative_prices.index, cumulative_prices, label="Cumulative Price")
-            ax1.set_ylabel(f"D{j} Amplitude", fontsize=14)
-            ax2.set_ylabel("Cumulative Price", fontsize=14)
-            ax1.tick_params(axis='y', labelsize=12)
-            ax2.tick_params(axis='y', labelsize=12)
-            lines1, labels1 = ax1.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=12)
-        
-        ax1 = axes[-1]
-        ax2 = ax1.twinx()
-        h_series = pd.Series(H_series[i], index=cumulative_prices.index)
-        sns.lineplot(data=h_series, ax=ax1, color="red", label=f"H_{i}(t)", alpha=0.65)
-        ax2.plot(cumulative_prices.index, cumulative_prices, label="Cumulative Price")
-        ax1.set_ylabel(f"H_{i} Value (%)", fontsize=14)
-        ax2.set_ylabel("Cumulative Price", fontsize=14)
-        ax1.tick_params(axis='y', labelsize=12)
-        ax2.tick_params(axis='y', labelsize=12)
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=12)
-        
-        axes[-1].set_xlabel("Date", fontsize=14)
-        axes[-1].tick_params(axis='x', labelsize=12)
-        fig.suptitle(f"Reconstructed Details and H_{i} with Cumulative Price for {ticker_name}", fontsize=18)
-        plt.xticks(rotation=45)
-        plt.tight_layout(rect=[0, 0, 1, 0.96])
-        plt.savefig(f'plots/H_{i}_with_details_and_price_{ticker_name}.png')
-        plt.close()
+    ax5.plot(variability_series['D4'].index, variability_series['D4'], label='D4', color='purple')
+    ax5.set_title('D4 Variability')
+    ax5.set_xlabel('Date')
+    ax5.set_ylabel('Variability')
+    ax5.legend()
 
-def compute_mobile_energy(H_series, window_size=16):
-    """
-    Calcula la energía móvil para cada H_i(t).
+    # Compute threshold as percentile of all variability values
+    all_variability = pd.concat([variability_series['D1'], variability_series['D2'], 
+                                variability_series['D3'], variability_series['D4']]).dropna()
+    threshold = np.percentile(all_variability, percentile_threshold)
 
-    Parameters:
-    - H_series (dict): Series H_i(t).
-    - window_size (int): Tamaño de la ventana móvil.
+    # Add horizontal threshold line to all variability plots
+    for ax in [ax2, ax3, ax4, ax5]:
+        ax.axhline(y=threshold, color='black', linestyle='--', label=f'Threshold ({percentile_threshold}th percentile)')
+        ax.legend()
 
-    Returns:
-    - energy_series (dict): Series de energía móvil.
-    """
-    energy_series = {}
-    for i in H_series:
-        h_series = pd.Series(H_series[i])
-        energy_series[i] = h_series.rolling(window=window_size, min_periods=1).apply(lambda x: np.sum(x**2), raw=True).values
-    return energy_series
+    # Find indices where variability exceeds threshold at any level
+    threshold_crossings = []
+    for level in ['D1', 'D2', 'D3', 'D4']:
+        crossings = variability_series[level][variability_series[level] > threshold].index
+        threshold_crossings.extend(crossings)
 
-def plot_mobile_energy(energy_series, cumulative_prices, ticker_name, window_size):
-    """
-    Grafica la energía móvil junto con los precios acumulados.
+    # Add vertical lines to the price plot for threshold crossings
+    for date in sorted(set(threshold_crossings)):
+        ax1.axvline(x=date, color='red', linestyle='--', alpha=0.5)
 
-    Parameters:
-    - energy_series (dict): Series de energía móvil.
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - ticker_name (str): Nombre del ticker.
-    - window_size (int): Tamaño de la ventana móvil.
-    """
-    fig, ax1 = plt.subplots(figsize=(14, 7))
-    for i in energy_series:
-        ax1.plot(cumulative_prices.index, energy_series[i], label=f'$Energy(H_{i})$')
-    ax1.set_xlabel('Fecha', fontsize=18)
-    ax1.set_ylabel('Energía Móvil de $H_i(t)$', fontsize=18)
-    ax1.tick_params(axis='both', labelsize=15)
-    ax1.set_title(f'Energía Móvil de $H_i(t)$ para cada Nivel (Ventana {window_size} días)', fontsize=22)
-    
-    ax2 = ax1.twinx()
-    ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return')
-    ax2.set_ylabel('Cumulative Return', fontsize=18)
-    ax2.tick_params(axis='y', labelsize=15)
-    
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=15, title_fontsize=16)
+    # Adjust layout
     plt.tight_layout()
-    plt.savefig(f'plots/Energy_series_all_levels_{ticker_name}.png')
-    plt.close()
+    plt.show()
 
-def denoise_H_series(H_series, level, threshold_energy_retain=0.4):
-    """
-    Aplica denoising a las series H_i(t).
-
-    Parameters:
-    - H_series (dict): Series H_i(t).
-    - level (int): Nivel máximo de descomposición.
-    - threshold_energy_retain (float): Fracción de energía a retener.
-
-    Returns:
-    - denoised_series (dict): Series H_i(t) denoised.
-    """
-    denoised_series = {}
-    for i in H_series:
-        coeffs_H = pywt.wavedec(H_series[i], 'haar', level=level, mode='periodization')
-        flat_coeffs = np.concatenate([c for c in coeffs_H])
-        sorted_abs_coeffs = np.sort(np.abs(flat_coeffs))[::-1]
-        total_energy = np.sum(sorted_abs_coeffs**2)
-        if total_energy == 0:
-            T = 0
-        else:
-            cumulative_energy = np.cumsum(sorted_abs_coeffs**2)
-            idx_threshold = np.searchsorted(cumulative_energy, threshold_energy_retain * total_energy)
-            T = sorted_abs_coeffs[idx_threshold] if idx_threshold < len(sorted_abs_coeffs) else sorted_abs_coeffs[-1]
-        thresholded_coeffs = [pywt.threshold(c, T, mode='hard') for c in coeffs_H]
-        denoised_series[i] = pywt.waverec(thresholded_coeffs, 'haar', mode='periodization')[:len(H_series[i])]
-    return denoised_series
-
-def plot_denoised_H_series(denoised_series, cumulative_prices, ticker_name, threshold_energy_retain):
-    """
-    Grafica todas las series H_i(t) denoised.
-
-    Parameters:
-    - denoised_series (dict): Series H_i(t) denoised.
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - ticker_name (str): Nombre del ticker.
-    - threshold_energy_retain (float): Fracción de energía retenida.
-    """
-    fig = plt.figure(figsize=(16, 10))
-    ax1 = plt.gca()
-    for i in denoised_series:
-        ax1.plot(cumulative_prices.index[:len(denoised_series[i])], denoised_series[i], label=f'Denoised $H_{i}$')
-    ax1.set_xlabel('Fecha')
-    ax1.set_ylabel('Amplitud Denoised $H_i(t)$')
-    ax1.set_title(f'Denoised $H_i(t)$ para cada Nivel ({threshold_energy_retain*100}% Energía Retenida)')
-    ax1.tick_params(axis='y', labelsize=12)
-    
-    ax2 = ax1.twinx()
-    ax2.plot(cumulative_prices.index, cumulative_prices.values, label='Cumulative Return', color='black', alpha=0.5)
-    ax2.set_ylabel('Cumulative Return')
-    ax2.tick_params(axis='y', labelsize=12)
-    
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-    plt.tight_layout()
-    plt.savefig(f'plots/denoised_H_series_all_levels_{ticker_name}.png')
-    plt.close()
-
-def identify_critical_dates(denoised_series, log_returns):
-    """
-    Identifica fechas críticas basadas en las series denoised.
-
-    Parameters:
-    - denoised_series (dict): Series H_i(t) denoised.
-    - log_returns (pd.Series): Serie de log returns.
-
-    Returns:
-    - critical_dates (dict): Diccionario con fechas críticas por nivel.
-    """
-    critical_dates = {}
-    for i in denoised_series:
-        critical_indices = np.where(np.abs(denoised_series[i]) > 1e-10)[0]
-        critical_dates[i] = log_returns.index[critical_indices]
-    return critical_dates
-
-def early_warning_system(log_returns, critical_dates, level, threshold_energy_retain=0.4, counter_threshold=10):
-    """
-    Implementa un sistema de contador para señales de alerta robustas.
-
-    Parameters:
-    - log_returns (pd.Series): Serie de log returns.
-    - critical_dates (dict): Fechas críticas por nivel.
-    - level (int): Nivel máximo de descomposición.
-    - threshold_energy_retain (float): Fracción de energía retenida.
-    - counter_threshold (int): Umbral de contador para considerar una alerta.
-
-    Returns:
-    - early_warnings (dict): Fechas de alerta temprana por nivel.
-    """
-    early_warnings = {}
-    for i in range(1, level + 1):
-        early_warnings[i] = []
-        if not critical_dates[i].empty:
-            for crit_date in critical_dates[i]:
-                idx = log_returns.index.get_loc(crit_date)
-                counter = 0
-                for x in range(max(0, idx - 15), min(len(log_returns), idx + 16)):
-                    truncated = log_returns.iloc[:x+1].values
-                    if not truncated.size:
-                        continue
-                    flipped = truncated[::-1]
-                    pattern_len = 2 * len(truncated)
-                    if pattern_len == 0:
-                        continue
-                    num_repeats = (len(log_returns) // pattern_len) + 1
-                    modified = np.concatenate([truncated, flipped] * num_repeats)[:len(log_returns)]
-                    
-                    coeffs_mod = pywt.wavedec(modified, 'haar', level=level, mode='periodization')
-                    details_sum_mod = np.zeros_like(log_returns.values, dtype=float)
-                    for j in range(1, i + 1):
-                        idx_Dj = level - j + 1
-                        coeff_list = [np.zeros_like(coeffs_mod[0])] + [
-                            coeffs_mod[k] if k == idx_Dj else np.zeros_like(coeffs_mod[k]) for k in range(1, len(coeffs_mod))]
-                        detail_rec = pywt.waverec(coeff_list, 'haar', mode='periodization')[:len(details_sum_mod)]
-                        details_sum_mod += np.abs(detail_rec)
-                    
-                    approx_list = [coeffs_mod[0]] + [np.zeros_like(c) for c in coeffs_mod[1:]]
-                    approx_mod = pywt.waverec(approx_list, 'haar', mode='periodization')[:len(details_sum_mod)]
-                    approx_mod = np.where(approx_mod == 0, 1e-10, approx_mod)
-                    H_mod = details_sum_mod / approx_mod
-                    
-                    coeffs_H_mod = pywt.wavedec(H_mod, 'haar', level=level, mode='periodization')
-                    flat_coeffs_mod = np.concatenate([c for c in coeffs_H_mod])
-                    sorted_abs_coeffs_mod = np.sort(np.abs(flat_coeffs_mod))[::-1]
-                    total_energy = np.sum(sorted_abs_coeffs_mod**2)
-                    if total_energy == 0:
-                        T_mod = 0
-                    else:
-                        cumulative_energy = np.cumsum(sorted_abs_coeffs_mod**2)
-                        idx_threshold = np.searchsorted(cumulative_energy, threshold_energy_retain * total_energy)
-                        T_mod = sorted_abs_coeffs_mod[idx_threshold] if idx_threshold < len(sorted_abs_coeffs_mod) else sorted_abs_coeffs_mod[-1]
-                    
-                    thresholded_coeffs = [pywt.threshold(c, T_mod, mode='hard') for c in coeffs_H_mod]
-                    denoised_mod = pywt.waverec(thresholded_coeffs, 'haar', mode='periodization')[:len(H_mod)]
-                    if idx < len(denoised_mod) and np.abs(denoised_mod[idx]) > 1e-10:
-                        counter += 1
-                
-                if counter > counter_threshold:
-                    early_warnings[i].append(crit_date)
-    return early_warnings
-
-def plot_early_warnings(cumulative_prices, early_warnings, ticker_name, level_to_plot):
-    """
-    Grafica precios acumulados con señales de alerta.
-
-    Parameters:
-    - cumulative_prices (pd.Series): Precios acumulados.
-    - early_warnings (dict): Fechas de alerta temprana.
-    - ticker_name (str): Nombre del ticker.
-    - level_to_plot (int): Nivel de H_i a graficar.
-    """
-    plt.figure(figsize=(15, 7))
-    plt.plot(cumulative_prices.index, cumulative_prices, label=f'Precios Acumulados ({ticker_name})', color='blue', alpha=0.7)
-    if level_to_plot in early_warnings and early_warnings[level_to_plot]:
-        for idx, date in enumerate(early_warnings[level_to_plot]):
-            plt.axvline(x=date, color='red', linestyle='--', linewidth=1.2, 
-                        label=f'Alerta Temprana H_{level_to_plot}' if idx == 0 else None)
-    plt.title(f'Precios Acumulados y Señales de Alerta Temprana para $H_{level_to_plot}$')
-    plt.xlabel('Fecha')
-    plt.ylabel('Precio Acumulado')
-    handles, labels = plt.gca().get_legend_handles_labels()
-    if handles:
-        by_label = dict(zip(labels, handles))
-        plt.legend(by_label.values(), by_label.keys())
-    plt.tight_layout()
-    plt.savefig(f'plots/cumulative_prices_with_H{level_to_plot}_warnings_{ticker_name}.png')
-    plt.close()
-
-def plot_critical_dates_frequency(critical_dates, early_warnings, ticker_name, level):
-    """
-    Grafica la frecuencia de fechas críticas detectadas.
-
-    Parameters:
-    - critical_dates (dict): Fechas críticas por nivel.
-    - early_warnings (dict): Fechas de alerta temprana.
-    - ticker_name (str): Nombre del ticker.
-    - level (int): Nivel máximo de descomposición.
-    """
-    plt.figure(figsize=(16, 8))
-    colors = ['blue', 'green', 'purple', 'orange']
-    for i in range(1, level + 1):
-        if not critical_dates[i].empty:
-            dates = critical_dates[i]
-            counts = [sum(1 for _ in range(1, level + 1) if date in critical_dates[i]) for date in dates]
-            for date, count in zip(dates, counts):
-                is_alert = date in early_warnings.get(i, [])
-                color = 'red' if is_alert else colors[i-1]
-                marker = 'o' if is_alert else 'x'
-                size = 50 if is_alert else 30
-                label = f'Alerta Temprana (H_{i}, Contador > 10)' if is_alert else f'Fecha Crítica (H_{i}, Contador <= 10)'
-                plt.scatter(date, count, color=color, marker=marker, s=size, label=label, alpha=0.7, edgecolors='k', linewidths=0.5)
-    
-    plt.axhline(y=10, color='black', linestyle='--', linewidth=1.2, label='Umbral de Alerta (Contador = 10)')
-    plt.title('Validación de Fechas Críticas: Robustez y Señales de Alerta')
-    plt.xlabel('Fecha')
-    plt.ylabel('Contador de Robustez')
-    handles, labels = plt.gca().get_legend_handles_labels()
-    if handles:
-        by_label = dict(zip(labels, handles))
-        plt.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1,1))
-    plt.grid(True, linestyle=':', alpha=0.6)
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
-    plt.savefig(f'plots/frequency_critical_dates_robustness_check_{ticker_name}.png', bbox_inches='tight')
-    plt.close()
 
 if __name__ == "__main__":
     ticker_name = 'SP'
     file_path = 'sector_log_returns.csv'
     level = 4
     top_pct = 3
-    window_size = 30
+    window_size = 32
     threshold_energy_retain = 0.4
+    percentile_threshold = 95
     
     log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
-    coeffs = wavelet_decomposition(log_returns, level=level)
-    plot_wavelet_coefficients(coeffs, level, ticker_name)
-    extreme_dates = extract_extreme_dates(coeffs, level, log_returns.index, top_pct)
-    plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
-    plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, log_returns.index)
-    H_series, detail_series = compute_H_series_window(log_returns, level=level)
-    plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
-    energy_series = compute_mobile_energy(H_series, window_size)
-    plot_mobile_energy(energy_series, cumulative_prices, ticker_name, window_size)
-    denoised_series = denoise_H_series(H_series, level, threshold_energy_retain)
-    plot_denoised_H_series(denoised_series, cumulative_prices, ticker_name, threshold_energy_retain)
-    critical_dates = identify_critical_dates(denoised_series, log_returns)
-    early_warnings = early_warning_system(log_returns, critical_dates, level, threshold_energy_retain)
-    plot_early_warnings(cumulative_prices, early_warnings, ticker_name, level)
-    plot_critical_dates_frequency(critical_dates, early_warnings, ticker_name, level)
+    
+    # Compute variability series (level 4, window size 32)
+    variability_series = compute_variability_series(log_returns, window_size=window_size, level=level)
+
+    # Plot results
+    plot_variability_and_prices(log_returns, cumulative_prices, variability_series, ticker_name)
+
+    # Alternative: Compute with level 3, window size 16
+    level_alt = 3
+    window_size_alt = 16
+    variability_series_alt = compute_variability_series(log_returns, window_size=window_size_alt, level=level_alt)
+
+    # Plot alternative results
+    plot_variability_and_prices(log_returns, cumulative_prices, variability_series_alt, ticker_name)
+
+    # Compute variability series for all levels up to 4
+    variability_series = compute_all_variability_series(log_returns, window_size=window_size, level=level)
+
+    # Plot results
+    plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_series, ticker_name, percentile_threshold)
