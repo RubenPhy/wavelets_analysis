@@ -4,6 +4,7 @@ import pywt
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
+import os
 
 # Configuración global de Seaborn y Matplotlib
 sns.set_theme(style="darkgrid")
@@ -207,52 +208,40 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     Plot the cumulative prices and DWT detail coefficients (D1, D2, D3, D4) with a percentile-based threshold
     and vertical lines for threshold crossings.
     """
-    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
+    # Set height ratios: ax1 is double the height of the others
+    fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(
+        5, 1, figsize=(12, 12), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1, 1, 1]}
+    )
 
     # Plot cumulative prices (coefficient band) in black
     ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='black')
-    ax1.set_title(f'Cumulative Prices ({ticker_name})')
+    ax1.set_title(f'Cumulative Price and Wavelet Coefficients for {ticker_name} - Threshold: {percentile_threshold}th Percentile', fontsize=20, fontweight='bold')
+
     ax1.set_ylabel('Price')
     ax1.legend(loc='best')
 
-    # Plot D1, D2, D3, D4 variability series with individual thresholds
-    ax2.plot(cumulative_prices.index, variability_series['D1'], label='D1', color='red')
-    threshold_d1 = np.percentile(variability_series['D1'].dropna(), percentile_threshold)
-    ax2.axhline(y=threshold_d1, color='black', linestyle='--', label=f'Threshold D1 ({percentile_threshold}th percentile)')
-    ax2.set_title('D1 Variability')
-    ax2.set_ylabel('Variability')
-    ax2.legend(loc='best')
+    # Use seaborn 'husl' color palette for D1-D4
+    husl_colors = sns.color_palette('husl', 4)
+    dwt_levels = ['D1', 'D2', 'D3', 'D4']
+    axes = [ax2, ax3, ax4, ax5]
 
-    ax3.plot(cumulative_prices.index, variability_series['D2'], label='D2', color='green')
-    threshold_d2 = np.percentile(variability_series['D2'].dropna(), percentile_threshold)
-    ax3.axhline(y=threshold_d2, color='black', linestyle='--', label=f'Threshold D2 ({percentile_threshold}th percentile)')
-    ax3.set_title('D2 Variability')
-    ax3.set_ylabel('Variability')
-    ax3.legend(loc='best')
-
-    ax4.plot(cumulative_prices.index, variability_series['D3'], label='D3', color='cyan')
-    threshold_d3 = np.percentile(variability_series['D3'].dropna(), percentile_threshold)
-    ax4.axhline(y=threshold_d3, color='black', linestyle='--', label=f'Threshold D3 ({percentile_threshold}th percentile)')
-    ax4.set_title('D3 Variability')
-    ax4.set_ylabel('Variability')
-    ax4.legend(loc='best')
-
-    ax5.plot(cumulative_prices.index, variability_series['D4'], label='D4', color='purple')
-    threshold_d4 = np.percentile(variability_series['D4'].dropna(), percentile_threshold)
-    ax5.axhline(y=threshold_d4, color='black', linestyle='--', label=f'Threshold D4 ({percentile_threshold}th percentile)')
-    ax5.set_title('D4 Variability')
+    thresholds = {}
+    for i, (level, ax) in enumerate(zip(dwt_levels, axes)):
+        color = husl_colors[i]
+        ax.plot(cumulative_prices.index, variability_series[level], label=level, color=color)
+        threshold = np.percentile(variability_series[level].dropna(), percentile_threshold)
+        thresholds[level] = threshold
+        ax.axhline(y=threshold, color='black', linestyle='--', label=f'Threshold {level} ({percentile_threshold}th percentile)')
+        ax.set_title(f'{level} Variability', fontsize=16)
+        ax.set_ylabel('Variability')
     ax5.set_xlabel('Date')
-    ax5.set_ylabel('Variability')
-    ax5.legend(loc='best')
 
     # Find indices where variability exceeds threshold for each level with distinct lines
-    thresholds = {'D1': threshold_d1, 'D2': threshold_d2, 'D3': threshold_d3, 'D4': threshold_d4}
-    colors = {'D1': 'red', 'D2': 'green', 'D3': 'cyan', 'D4': 'purple'}
-
-    for level, threshold in thresholds.items():
-        crossings = variability_series[level][variability_series[level] > threshold].index
+    for i, level in enumerate(dwt_levels):
+        color = husl_colors[i]
+        crossings = variability_series[level][variability_series[level] > thresholds[level]].index
         for date in sorted(crossings):
-            ax1.axvline(x=cumulative_prices.index[date], color=colors[level], linestyle='--', alpha=0.5, label=f'{level} Crossing' if date == min(crossings) else "")
+            ax1.axvline(x=cumulative_prices.index[date], color=color, linestyle='--', alpha=0.5, label=f'{level} Crossing' if date == min(crossings) else "")
 
     # Set x-axis limits to match cumulative_prices
     for ax in [ax1, ax2, ax3, ax4, ax5]:
@@ -264,6 +253,9 @@ def plot_dwt_levels_with_threshold(log_returns, cumulative_prices, variability_s
     ax1.legend(by_label.values(), by_label.keys(), loc='best')
 
     plt.tight_layout()
+    # Save the plot as PNG in the 'plot' folder
+    os.makedirs('plot', exist_ok=True)
+    fig.savefig(os.path.join('plots', f'{ticker_name}_dwt_levels_threshold.png'), dpi=300)
     plt.show()
 
 
@@ -274,7 +266,7 @@ if __name__ == "__main__":
     top_pct = 3
     window_size = 32
     threshold_energy_retain = 0.4
-    percentile_threshold = 98
+    percentile_threshold = 99
     
     log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
     
