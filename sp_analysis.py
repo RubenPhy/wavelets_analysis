@@ -136,12 +136,13 @@ for broad, subsectors in broad_sectors.items():
 # Add broad sector column to df_sp_info
 df_sp_info['Broad Sector'] = df_sp_info['Industry Name'].map(subsector_to_broad)
 
-# Create synthetic indices for broad sectors (logarithmic returns)
+# Create synthetic indices for broad sectors (logarithmic returns and average prices)
 broad_sector_indices = {}
 for broad_sector in broad_sectors.keys():
     print(f'Processing broad sector: {broad_sector}')
     tickers = df_sp_info[df_sp_info['Broad Sector'] == broad_sector]['Identifier']
     sector_returns = []
+    sector_prices = []
     for ticker in tickers:
         print(f'Processing ticker: {ticker}')
         if ticker not in dfs:
@@ -152,15 +153,19 @@ for broad_sector in broad_sectors.keys():
             # Calculate logarithmic returns: log(P_t / P_{t-1})
             df['Log Return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
             sector_returns.append(df['Log Return'])
-    if sector_returns:  # Only process if there are valid returns
-        sector_df = pd.concat(sector_returns, axis=1)
-        sector_mean = sector_df.mean(axis=1)
-        # Calculate cumulative return from log returns: cumsum for display
-        sector_cumulative = sector_mean.cumsum()
-        broad_sector_indices[broad_sector] = (sector_mean, sector_cumulative)
+            sector_prices.append(df['CLOSE'])
+    if sector_returns:  # Only process if there are valid data
+        sector_returns_df = pd.concat(sector_returns, axis=1)
+        sector_prices_df = pd.concat(sector_prices, axis=1)
+        sector_mean_returns = sector_returns_df.mean(axis=1)
+        sector_mean_prices = sector_prices_df.mean(axis=1)
+        # Calculate cumulative return from log returns
+        sector_cumulative = sector_mean_returns.cumsum()
+        broad_sector_indices[broad_sector] = (sector_mean_returns, sector_cumulative, sector_mean_prices)
 
-# Create synthetic S&P 500 index (logarithmic return)
+# Create synthetic S&P 500 index (logarithmic return and average price)
 all_returns = []
+all_prices = []
 for ticker in df_sp_info['Identifier']:
     if ticker not in dfs:
         print(f'Ticker {ticker} not found in DataFrames. Skipping.')
@@ -170,20 +175,29 @@ for ticker in df_sp_info['Identifier']:
         # Calculate logarithmic returns
         df['Log Return'] = np.log(df['CLOSE'] / df['CLOSE'].shift(1))
         all_returns.append(df['Log Return'])
-sp500_df = pd.concat(all_returns, axis=1)
-synthetic_sp500 = sp500_df.mean(axis=1)
+        all_prices.append(df['CLOSE'])
+sp500_returns_df = pd.concat(all_returns, axis=1)
+sp500_prices_df = pd.concat(all_prices, axis=1)
+synthetic_sp500 = sp500_returns_df.mean(axis=1)
+synthetic_sp500_prices = sp500_prices_df.mean(axis=1)
 synthetic_sp500_cumulative = synthetic_sp500.cumsum()
 
 # Save daily logarithmic returns to CSV
-results_df = pd.DataFrame({'S&P 500': synthetic_sp500})
-for broad_sector, (returns, _) in broad_sector_indices.items():
-    results_df[broad_sector] = returns
-results_df.to_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\sector_log_returns.csv')
+returns_df = pd.DataFrame({'S&P 500': synthetic_sp500})
+for broad_sector, (returns, _, _) in broad_sector_indices.items():
+    returns_df[broad_sector] = returns
+returns_df.to_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\sector_log_returns.csv')
+
+# Save historical average prices to CSV
+prices_df = pd.DataFrame({'S&P 500': synthetic_sp500_prices})
+for broad_sector, (_, _, prices) in broad_sector_indices.items():
+    prices_df[broad_sector] = prices
+prices_df.to_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\sector_prices.csv')
 
 # Plot the synthetic S&P 500 and broad sector indices (cumulative log returns)
 plt.figure(figsize=(14, 8))
 sns.lineplot(data=synthetic_sp500_cumulative, label='Synthetic S&P 500', color='black')
-for broad_sector, (_, cumulative) in broad_sector_indices.items():
+for broad_sector, (_, cumulative, _) in broad_sector_indices.items():
     sns.lineplot(data=cumulative, label=f'Sector: {broad_sector}', alpha=0.7)
 plt.title('Synthetic S&P 500 and Broad Sector Cumulative Log Returns', fontsize=18)
 plt.xlabel('Date', fontsize=14)
@@ -195,4 +209,4 @@ plt.tight_layout()
 # Save the plot
 plt.savefig(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\plots\returns_SP500_and_sectors.png')
 plt.show()
-print("Analysis complete. Log returns saved to 'sector_log_returns.csv' and plot saved as 'returns_SP500_and_sectors.png'.")
+print("Analysis complete. Log returns saved to 'sector_log_returns.csv', historical prices saved to 'sector_prices.csv', and plot saved as 'returns_SP500_and_sectors.png'.")
