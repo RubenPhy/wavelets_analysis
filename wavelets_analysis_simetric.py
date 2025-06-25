@@ -10,6 +10,30 @@ import os
 sns.set_theme(style="darkgrid")
 plt.rcParams.update({"axes.titleweight": "bold"})
 
+def read_price_csv(file_path):
+    """
+    Reads a CSV file and returns a DataFrame with only the 'Price' column.
+    
+    Parameters:
+    file_path (str): Path to the CSV file
+    
+    Returns:
+    pandas.DataFrame: DataFrame with 'Date' as index and 'Price' column
+    """
+    df = pd.read_csv(
+        file_path,
+        usecols=['Date', 'Price'],
+        parse_dates=['Date']
+    )
+    df['Price'] = df['Price'].replace(',', '', regex=True).replace('', np.nan)
+    df['Price'] = df['Price'].str.replace(',', '').astype(float)
+    df.set_index('Date', inplace=True)
+    df = df.iloc[::-1]
+    # Ajustar el tamaño de la serie para que sea potencia de 2, igual que en load_and_prepare_data
+    n = len(df['Price'])
+    n_adjusted = 2**int(np.log2(n))
+    return df['Price'].iloc[:n_adjusted]
+
 def load_and_prepare_data(file_path, column_name=None, initial_price=1):
     """
     Carga un archivo CSV y prepara los datos para el análisis.
@@ -351,14 +375,17 @@ def plot_returns_with_events(cumulative_prices, variability_series, ticker_name=
     ax1.set_ylabel('Price')
     ax1.legend(loc='best')
 
-    # Add vertical lines for events
-    for date_str in events.keys():
+    # Add vertical lines and text for events
+    for date_str, event_desc in events.items():
         date = pd.to_datetime(date_str)
         ax1.axvline(x=date, color='gray', linestyle='--', alpha=0.7, label='Event' if date == pd.to_datetime(list(events.keys())[0]) else "")
+        # Place text above the line, adjusted to a percentage of the price range
+        y_pos = cumulative_prices.min() + (cumulative_prices.max() - cumulative_prices.min()) * 0.05
+        ax1.text(date, y_pos, event_desc, rotation=90, verticalalignment='bottom', fontsize=14)
 
     # Add vertical lines for D4 peaks
     for date in peak_dates:
-        ax1.axvline(x=cumulative_prices.index[date], color='red', linestyle='--', alpha=0.7, label='D4 Peak' if date == min(peak_dates) else "")
+        ax1.axvline(x=cumulative_prices.index[date], color='red', linestyle='--', alpha=0.5, label='D4 Peak' if date == min(peak_dates) else "")
 
     # Set x-axis limits to match cumulative_prices
     ax1.set_xlim(cumulative_prices.index[0], cumulative_prices.index[-1])
@@ -403,9 +430,15 @@ if __name__ == "__main__":
     df = pd.read_csv(file_path, index_col='Date', parse_dates=True)
     sectors = [col for col in df.columns if col != 'log_return']
     
+    # Example usage
+    price_df = read_price_csv(r'C:\Users\Usuario\Documents\PhD_AI\wavelets_analysis\S&P 500 Historical Data.csv')
+    variability_series_sp = compute_all_variability_series(price_df, window_size=window_size, level=level)
+    plot_returns_with_events(price_df, variability_series_sp, ticker_name="SP_500", percentile_threshold=percentile_threshold)
     for sector in sectors:
         print(f"Processing sector: {sector}")
         log_returns, cumulative_prices = load_and_prepare_data(file_path, column_name=sector)
+
+
         
         # Compute variability series for all levels up to 4
         variability_series = compute_all_variability_series(log_returns, window_size=window_size, level=level)
