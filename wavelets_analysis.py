@@ -32,46 +32,118 @@ def load_and_prepare_data(file_path, column_name=None, initial_price=1):
     cumulative_log_returns = df_log_ret.cumsum()
     cumulative_prices = initial_price * np.exp(cumulative_log_returns)
     cumulative_prices = pd.Series(cumulative_prices, index=df_log_ret.index, name='Cumulative_Price')
-    
-    n = len(df_log_ret)
-    n_adjusted = 2**int(np.log2(n))
-    return df_log_ret.iloc[:n_adjusted], cumulative_prices.iloc[:n_adjusted]
 
-def wavelet_decomposition(log_returns, wavelet='haar', level=4):
+    return df_log_ret, cumulative_prices
+
+def compute_variability_series(time_series, window_size, wavelet='haar', level=4):
     """
-    Realiza la descomposición wavelet de los log returns.
+    Compute the normalized variability indicator for the entire time series.
 
     Parameters:
-    - log_returns (pd.Series): Serie de log returns.
-    - wavelet (str): Tipo de wavelet a usar (default: 'haar').
-    - level (int): Nivel máximo de descomposición.
+    - time_series: numpy array or pd.Series, the input financial time series
+    - window_size: int, size of the moving window (default 32)
+    - wavelet: str, wavelet type (default 'haar')
+    - level: int, DWT decomposition level (default 4)
 
     Returns:
-    - coeffs (list): Lista de coeficientes wavelet [cA_level, cD_level, ..., cD_1].
+    - variability_series: pd.Series, normalized variability for each valid time point
     """
-    return pywt.wavedec(log_returns.values, wavelet, level=level, mode='periodization')
+    half_window = window_size // 2
+    start_t = half_window
+    end_t = time_series.size - half_window + 1
+    variability_series = []
+
+    for t in range(start_t, end_t):
+        try:
+            variability_series.append(wavelet_decomposition_from_symmetrized_signal(
+                time_series, t, window_size, wavelet, level
+            ))
+        except ValueError:
+            continue  # Skip invalid indices
+
+    # Convert to pandas Series with same index as input if available
+    # Flat the variability_series to a 1D array
+    variability_array = np.concatenate([np.ravel(v) for v in variability_series])
+    variability_df = pd.DataFrame({'Variability': variability_array}, index=time_series.index[start_t:end_t-1])
+    return variability_df
+
+def wavelet_decomposition_from_symmetrized_signal(time_series, t, window_size, wavelet='haar', level=4):
+    """
+    Performs wavelet decomposition on a symmetrized signal around a given time index 't'.
+
+    Parameters:
+    - time_series: numpy array or pd.Series, the input financial time series (e.g., log returns).
+    - t: int, the time index around which to symmetrize the signal.
+    - window_size: int, size of the moving window (must be a power of 2, default 32).
+    - wavelet (str): Type of wavelet to use (default: 'haar').
+    - level (int): Maximum decomposition level.
+
+    Returns:
+    - coeffs (list): List of wavelet coefficients [cA_level, cD_level, ..., cD_1].
+    """
+    # Convert time_series to numpy array if it's a pandas Series
+    time_series = np.asarray(time_series)
+
+    # Step 1: Validate window_size
+    if not (window_size & (window_size - 1) == 0):
+        raise ValueError("Window size must be a power of 2.")
+    half_window = window_size // 2
+
+    # Step 2: Validate time index t
+    if t < half_window or t >= len(time_series) - half_window + 1:
+        raise ValueError("Time index t is out of bounds for the given time series and window size.")
+
+    # Step 3: Symmetrize the signal around time t
+    # Form: [x(t-15), ..., x(t-1), x(t), x(t-1), ..., x(t-15)] for window_size=32
+    left = time_series[t - half_window:t]
+    right = time_series[t + 1:t + half_window + 1][::-1]
+    symmetrized_signal = np.concatenate([left, right])
+
+    # Verify symmetrized signal length
+    if len(symmetrized_signal) != window_size:
+        raise ValueError(f"Symmetrized signal length ({len(symmetrized_signal)}) does not match window size ({window_size}).")
+
+    # Step 4: Apply DWT to obtain coefficients
+    # Using 'symmetric' mode to match the behavior of the original function's wavelet decomposition.
+    coeffs = pywt.wavedec(symmetrized_signal, wavelet=wavelet, level=level, mode='symmetric')
+    # coeffs[0] is A^level (approximation), coeffs[1] is D^level, coeffs[2] is D^(level-1), ...
+
+    return coeffs[-level]
 
 def plot_wavelet_coefficients(coeffs, level, ticker_name):
     """
     Genera y guarda gráficos de los coeficientes wavelet.
 
     Parameters:
-    - coeffs (list): Coeficientes wavelet.
+    - coeffs (pd.DataFrame o list): Coeficientes wavelet o DataFrame con una columna.
     - level (int): Nivel máximo de descomposición.
     - ticker_name (str): Nombre del ticker para el nombre del archivo.
     """
-    fig, axs = plt.subplots(len(coeffs), 1, figsize=(12, 10), sharex=False)
-    axs[0].plot(coeffs[0])
-    axs[0].set_title(f'Approximation Coefficients (cA{level})', fontsize=18)
-    axs[0].tick_params(axis='both', labelsize=14)
-    for i in range(1, len(coeffs)):
-        axs[i].plot(coeffs[i])
-        axs[i].set_title(f'Detail Coefficients (cD{level - i + 1})', fontsize=18)
-        axs[i].tick_params(axis='both', labelsize=14)
-    fig.suptitle('Wavelet Coefficients of Log Returns', fontsize=22)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}.png')
-    plt.close()
+    # Si coeffs es un DataFrame con una sola columna
+    if isinstance(coeffs, pd.DataFrame) and coeffs.shape[1] == 1:
+        plt.figure(figsize=(12, 5))
+        plt.plot(coeffs.iloc[:, 0], label=coeffs.columns[0])
+        plt.title(f'Wavelet Coefficient (Level {level})', fontsize=18)
+        plt.xlabel('Date', fontsize=16)
+        plt.ylabel('Coefficient Value', fontsize=16)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+        plt.tight_layout()
+        plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}_{level}.png')
+        plt.close()
+    else:
+        fig, axs = plt.subplots(len(coeffs), 1, figsize=(12, 10), sharex=False)
+        axs[0].plot(coeffs[0])
+        axs[0].set_title(f'Approximation Coefficients (cA{level})', fontsize=18)
+        axs[0].tick_params(axis='both', labelsize=14)
+        for i in range(1, len(coeffs)):
+            axs[i].plot(coeffs[i])
+            axs[i].set_title(f'Detail Coefficients (cD{level - i + 1})', fontsize=18)
+            axs[i].tick_params(axis='both', labelsize=14)
+        fig.suptitle('Wavelet Coefficients of Log Returns', fontsize=22)
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}.png')
+        plt.close()
 
 def extract_extreme_dates(coeffs, level, base_index, top_pct=5):
     """
@@ -541,16 +613,16 @@ if __name__ == "__main__":
     file_path = 'sector_log_returns.csv'
     level = 4
     top_pct = 3
-    window_size = 30
+    window_size = 2**level
     threshold_energy_retain = 0.4
     
     log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
-    coeffs = wavelet_decomposition(log_returns, level=level)
-    plot_wavelet_coefficients(coeffs, level, ticker_name)
-    extreme_dates = extract_extreme_dates(coeffs, level, log_returns.index, top_pct)
+    df_coeffs = compute_variability_series(log_returns, window_size=window_size, wavelet='haar', level=level)
+    plot_wavelet_coefficients(df_coeffs, level, ticker_name)
+    extreme_dates = extract_extreme_dates(df_coeffs, level, log_returns.index, top_pct)
     plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
-    plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, log_returns.index)
-    H_series, detail_series = compute_H_series(log_returns, coeffs, level)
+    plot_extreme_dates_with_coefficients(cumulative_prices, df_coeffs, level, ticker_name, top_pct, log_returns.index)
+    H_series, detail_series = compute_H_series(log_returns, df_coeffs, level)
     plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
     energy_series = compute_mobile_energy(H_series, window_size)
     plot_mobile_energy(energy_series, cumulative_prices, ticker_name, window_size)
