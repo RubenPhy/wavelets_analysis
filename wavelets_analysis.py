@@ -121,7 +121,7 @@ def plot_wavelet_coefficients(coeffs, level, ticker_name):
     """
     # Si coeffs es un DataFrame con una sola columna
     if isinstance(coeffs, pd.DataFrame) and coeffs.shape[1] == 1:
-        plt.figure(figsize=(12, 5))
+        plt.figure(figsize=(12, 3))
         plt.plot(coeffs.iloc[:, 0], label=coeffs.columns[0])
         plt.title(f'Wavelet Coefficient (Level {level})', fontsize=18)
         plt.xlabel('Date', fontsize=16)
@@ -145,32 +145,53 @@ def plot_wavelet_coefficients(coeffs, level, ticker_name):
         plt.savefig(f'plots/wavelet_coefficients_log_returns_{ticker_name}.png')
         plt.close()
 
-def extract_extreme_dates(coeffs, level, base_index, top_pct=5):
+def extract_extreme_dates(dfs_coeffs, top_pct=5, min_initial_data=100):
     """
-    Identifica fechas con oscilaciones extremas en los coeficientes wavelet.
+    Identifica fechas con oscilaciones extremas en los coeficientes wavelet, calculando el percentil dinámicamente
+    usando solo datos pasados.
 
     Parameters:
-    - coeffs (list): Coeficientes wavelet.
-    - level (int): Nivel máximo de descomposición.
-    - base_index (pd.Index): Índice temporal de la serie original.
+    - dfs_coeffs (list): Lista de DataFrames, cada uno con una columna 'Variability' y un índice temporal.
     - top_pct (float): Porcentaje superior de oscilaciones a considerar.
+    - min_initial_data (int): Número mínimo de datos iniciales para calcular el percentil (default: 100).
 
     Returns:
-    - dict: Diccionario {coef_name: DatetimeIndex} con fechas extremas.
+    - dict: Diccionario {coef_name: DatetimeIndex} con fechas extremas para cada nivel.
     """
     extreme_dates = {}
-    for i, arr in enumerate(coeffs):
-        name = f'cA{level}' if i == 0 else f'cD{level - i + 1}'
-        scale = 2**level if i == 0 else 2**(level - i + 1)
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
-        idx = np.where(np.abs(arr) >= thr)[0]
-        pos = np.minimum(idx * scale, len(base_index) - 1)
-        extreme_dates[name] = base_index[pos]
+    
+    for level, df in enumerate(dfs_coeffs, start=1):  # levels 1 to 4
+        # Nombre del coeficiente (cD_level, ya que usas coeffs[-level])
+        coef_name = f'cD{level}'
+        
+        # Obtener los valores de los coeficientes y el índice
+        coeffs = df['Variability'].values
+        base_index = df.index
+        
+        # Lista para almacenar las fechas extremas
+        extreme_indices = []
+        
+        # Iterar sobre las fechas a partir de min_initial_data
+        for i in range(min_initial_data, len(coeffs)):
+            # Calcular el percentil usando solo los datos pasados (hasta i)
+            past_data = np.abs(coeffs[:i+1])  # Incluye el dato actual
+            thr = np.percentile(past_data, 100 - top_pct)
+            
+            # Verificar si el coeficiente actual es extremo
+            if np.abs(coeffs[i]) >= thr:
+                extreme_indices.append(i)
+        
+        # Convertir índices a fechas
+        if extreme_indices:
+            extreme_dates[coef_name] = base_index[extreme_indices]
+        else:
+            extreme_dates[coef_name] = pd.DatetimeIndex([])  # Índice vacío si no hay extremos
+        
     return extreme_dates
 
 def plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct):
     """
-    Grafica precios acumulados con líneas verticales en fechas extremas.
+    Gráfica precios acumulados con líneas verticales en fechas extremas.
 
     Parameters:
     - cumulative_prices (pd.Series): Precios acumulados.
@@ -194,44 +215,36 @@ def plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct):
                for (n, _), c in zip(extreme_dates.items(), palette)]
     ax.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=14, title_fontsize=15)
     plt.tight_layout()
-    plt.savefig(f'plots/dates_with_highest_coeff_{ticker_name}.png')
+    plt.savefig(f'plots/dates_with_highest_coeff_{ticker_name}_{top_pct}.png')
     plt.close()
 
-def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticker_name, top_pct, base_index):
+def plot_extreme_dates_with_coefficients(cumulative_prices, dfs_coeffs, extreme_dates, ticker_name, top_pct, min_initial_data=100):
     """
-    Grafica precios acumulados con líneas verticales en fechas extremas y subplots de coeficientes wavelet con umbrales.
+    Gráfica precios acumulados con líneas verticales en fechas extremas y subplots de coeficientes wavelet con umbrales dinámicos.
 
     Parameters:
     - cumulative_prices (pd.Series): Precios acumulados.
-    - coeffs (list): Coeficientes wavelet [cA_level, cD_level, ..., cD_1].
-    - level (int): Nivel máximo de descomposición.
+    - dfs_coeffs (list): Lista de DataFrames, cada uno con una columna 'Variability' y un índice temporal.
+    - extreme_dates (dict): Diccionario de fechas extremas {coef_name: DatetimeIndex}.
     - ticker_name (str): Nombre del ticker.
     - top_pct (float): Porcentaje superior para umbrales.
-    - base_index (pd.Index): Índice temporal de la serie original.
+    - min_initial_data (int): Número mínimo de datos iniciales para calcular el percentil (default: 100).
     """
     # Número de subplots: 1 para precios + número de niveles de detalles
-    n_details = level  # cD1 a cD_level
-    # Altura del subplot de precios es 4, altura de detalles es 2 (la mitad)
-    heights = [4] + [2] * n_details
+    n_details = 4  # Número de niveles (cD1 a cD4)
+    heights = [4] + [2] * n_details  # Altura 4 para precios, 2 para cada subplot de coeficientes
     fig = plt.figure(figsize=(14, 4 + 2 * n_details))
     gs = fig.add_gridspec(n_details + 1, 1, height_ratios=heights)
     axes = [fig.add_subplot(gs[i]) for i in range(n_details + 1)]
     
-    # Graficar precios acumulados
+    # Gráfica precios acumulados
     ax_prices = axes[0]
     ax_prices.plot(cumulative_prices, linewidth=1.2)
+    ax_prices.set_title(f'Cumulative Price with Top {top_pct}% Wavelet Oscillations for {ticker_name}', fontsize=22)
     ax_prices.set_ylabel('Price', fontsize=14)
     ax_prices.tick_params(axis='both', labelsize=12)
     
-    # Añadir líneas verticales para fechas extremas (calculadas de coeffs)
-    extreme_dates = {}
-    for k in range(1, level + 1):
-        arr = coeffs[level - k + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
-        scale = 2**k
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
-        ind = np.where(np.abs(arr) >= thr)[0]
-        extreme_dates[f'cD{k}'] = base_index[::scale][ind]
-    
+    # Añadir líneas verticales para fechas extremas
     palette = sns.color_palette('husl', n_colors=len(extreme_dates))
     for (coef_name, dates), color in zip(extreme_dates.items(), palette):
         for date in dates:
@@ -242,33 +255,38 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, coeffs, level, ticke
                for (n, _), c in zip(extreme_dates.items(), palette)]
     ax_prices.legend(handles=handles, title='Coefficient band', loc='upper left', fontsize=12, title_fontsize=13)
     
-    # Graficar coeficientes wavelet con umbrales
-    for i in range(1, n_details + 1):  # cD1 a cD_level
+    # Graficar coeficientes wavelet con umbrales dinámicos
+    for i, df in enumerate(dfs_coeffs, start=1):  # Niveles 1 a 4
         ax = axes[i]
         coef_name = f'cD{i}'
-        arr = coeffs[level - i + 1]  # coeffs[1] es cD_level, ..., coeffs[level] es cD1
-        scale = 2**i
-        thr = np.percentile(np.abs(arr), 100 - top_pct)
+        coeffs = df['Variability'].values
+        coef_dates = df.index
         
-        # Crear índice de fechas para los coeficientes
-        coef_dates = base_index[::scale][:len(arr)]
+        # Graficar coeficientes
+        color = palette[i - 1]  # Usar el mismo color que las líneas verticales
+        ax.plot(coef_dates, coeffs, label=coef_name, color=color)
         
-        # Graficar coeficientes con el mismo color que las líneas verticales
-        color = palette[i - 1]  # Usar el color correspondiente de la paleta
-        ax.plot(coef_dates, arr, label=coef_name, color=color)
-        ax.axhline(y=thr, color='red', linestyle='--', label='Threshold')
-        ax.axhline(y=-thr, color='red', linestyle='--')
-        #ax.set_ylabel(f'{coef_name}', fontsize=12)
-        #ax.tick_params(axis='both', labelsize=10)
-        #ax.legend(loc='upper right', fontsize=10)
+        # Calcular y graficar umbrales dinámicos
+        thresholds = []
+        for j in range(min_initial_data, len(coeffs)):
+            past_data = np.abs(coeffs[:j+1])
+            thr = np.percentile(past_data, 100 - top_pct)
+            thresholds.append(thr)
+        # Extender umbrales con NaN para los primeros min_initial_data puntos
+        thresholds = [np.nan] * min_initial_data + thresholds
+        ax.plot(coef_dates, thresholds, color='red', linestyle='--', label='Threshold')
+        ax.plot(coef_dates, [-t if not np.isnan(t) else np.nan for t in thresholds], color='red', linestyle='--')
+        
+        ax.set_ylabel(f'{coef_name}', fontsize=12)
+        ax.tick_params(axis='both', labelsize=10)
+        ax.legend(loc='upper right', fontsize=10)
         if i != n_details:
             ax.tick_params(axis='x', which='both', labelbottom=False)
     
     # Ajustar etiquetas y título
     axes[-1].set_xlabel('Date', fontsize=14)
-    fig.suptitle(f'Cumulative Price and Wavelet Coefficients for {ticker_name}', fontsize=20, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}.png')
+    plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}_{top_pct}.png')
     plt.close()
 
 def compute_H_series(log_returns, coeffs, level):
@@ -546,7 +564,7 @@ def early_warning_system(log_returns, critical_dates, level, threshold_energy_re
 
 def plot_early_warnings(cumulative_prices, early_warnings, ticker_name, level_to_plot):
     """
-    Grafica precios acumulados con señales de alerta.
+    Gráfica precios acumulados con señales de alerta.
 
     Parameters:
     - cumulative_prices (pd.Series): Precios acumulados.
@@ -612,16 +630,32 @@ if __name__ == "__main__":
     ticker_name = 'SP'
     file_path = 'sector_log_returns.csv'
     level = 4
-    top_pct = 3
+    top_pct = 1
     window_size = 2**level
     threshold_energy_retain = 0.4
     
+    # Plot coefficients for four levels
     log_returns, cumulative_prices = load_and_prepare_data(file_path, 'S&P 500')
-    df_coeffs = compute_variability_series(log_returns, window_size=window_size, wavelet='haar', level=level)
-    plot_wavelet_coefficients(df_coeffs, level, ticker_name)
-    extreme_dates = extract_extreme_dates(df_coeffs, level, log_returns.index, top_pct)
+    dfs_coeffs = []
+    for level in range(1, 5):
+        window_size = 2**level
+        df_coeffs = compute_variability_series(log_returns, window_size=window_size, wavelet='haar', level=level)
+        plot_wavelet_coefficients(df_coeffs, level, ticker_name)
+        dfs_coeffs.append(df_coeffs)
+
+    # Combine coefficients into a single DataFrame
+    df_coeffs = pd.concat(dfs_coeffs, axis=1)
+    df_coeffs.columns = [f'cD{level - i + 1}' for i in range(1, level + 1)]
+    # Obtener fechas extremas
+    extreme_dates = extract_extreme_dates(dfs_coeffs, top_pct=3, min_initial_data=100)
+
+    # Imprimir resultados
+    for coef_name, dates in extreme_dates.items():
+        print(f"{coef_name}: {dates}")
     plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
-    plot_extreme_dates_with_coefficients(cumulative_prices, df_coeffs, level, ticker_name, top_pct, log_returns.index)
+    # Graficar precios y coeficientes
+    plot_extreme_dates_with_coefficients(cumulative_prices, dfs_coeffs, extreme_dates, ticker_name, top_pct, min_initial_data=100)
+    
     H_series, detail_series = compute_H_series(log_returns, df_coeffs, level)
     plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
     energy_series = compute_mobile_energy(H_series, window_size)
