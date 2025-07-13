@@ -4,6 +4,7 @@ import pywt
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
+import os
 
 # Configuración global de Seaborn y Matplotlib
 sns.set_theme(style="darkgrid")
@@ -287,6 +288,72 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, dfs_coeffs, extreme_
     axes[-1].set_xlabel('Date', fontsize=14)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}_{top_pct}.png')
+    plt.close()
+
+def plot_returns_with_events(cumulative_prices, variability_series, ticker_name='SP', percentile_threshold=95, events=None):
+    """
+    Plot cumulative prices with vertical lines for events and D4 peak dates.
+
+    Parameters:
+    - cumulative_prices: pd.Series, cumulative prices of the financial time series
+    - variability_series: dict, variability series for all levels (e.g., from compute_all_variability_series)
+    - ticker_name: str, name of the ticker (default 'SP')
+    - percentile_threshold: int, percentile threshold for identifying peaks (default 95)
+    - events: dict, dictionary of dates and corresponding event descriptions (default None)
+    """
+    if events is None:
+        events = {
+            "2020-03-16": "Panic due to COVID-19 pandemic",
+            "2019-08-23": "Escalation of trade war with China",
+            "2018-12-24": "Drop due to Fed fears",
+            "2018-02-05": "Volatility collapse (\"Volmageddon\")",
+            "2017-11-29": "Massive tech sector sell-off",
+            "2016-06-24": "Surprise from Brexit result",
+            "2015-08-24": "Concerns over Chinese economy",
+            "2014-12-01": "Worry over oil price drop",
+            "2013-06-20": "Announcement of stimulus withdrawal",
+            "2012-12-31": "Agreement to avoid \"fiscal cliff\""
+        }
+
+    # Compute D4 threshold and peak dates
+    d4_series = variability_series['D4']
+    threshold_d4 = np.percentile(d4_series.dropna(), percentile_threshold)
+    peak_dates = d4_series[d4_series > threshold_d4].index
+
+    # Create the plot
+    fig, ax1 = plt.subplots(figsize=(12, 6))
+
+    # Plot cumulative prices
+    ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='black')
+    ax1.set_title(f'Returns and Wavelet Coef. for {ticker_name} - Threshold: {percentile_threshold}th', fontsize=20, fontweight='bold')
+    ax1.set_ylabel('Price')
+    ax1.legend(loc='best')
+
+    # Add vertical lines and text for events
+    for date_str, event_desc in events.items():
+        date = pd.to_datetime(date_str)
+        ax1.axvline(x=date, color='gray', linestyle='--', alpha=0.7, label='Event' if date == pd.to_datetime(list(events.keys())[0]) else "")
+        # Place text above the line, adjusted to a percentage of the price range
+        y_pos = cumulative_prices.min() + (cumulative_prices.max() - cumulative_prices.min()) * 0.05
+        ax1.text(date, y_pos, event_desc, rotation=90, verticalalignment='bottom', fontsize=14)
+
+    # Add vertical lines for D4 peaks
+    for date in peak_dates:
+        ax1.axvline(x=cumulative_prices.index[date], color='red', linestyle='--', alpha=0.5, label='D4 Peak' if date == min(peak_dates) else "")
+
+    # Set x-axis limits to match cumulative_prices
+    ax1.set_xlim(cumulative_prices.index[0], cumulative_prices.index[-1])
+
+    # Adjust legend to avoid duplication
+    handles, labels = ax1.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax1.legend(by_label.values(), by_label.keys(), loc='best')
+
+    plt.tight_layout()
+    # Save the plot as PNG in the 'plots' folder
+    os.makedirs('plots', exist_ok=True)
+    fig.savefig(os.path.join('plots', f'returns_with_events_{ticker_name}_{percentile_threshold}th.png'))
+    #plt.show()
     plt.close()
 
 def compute_H_series(log_returns, coeffs, level):
