@@ -290,16 +290,17 @@ def plot_extreme_dates_with_coefficients(cumulative_prices, dfs_coeffs, extreme_
     plt.savefig(f'plots/dates_with_highest_coeff_and_subplots_{ticker_name}_{top_pct}.png')
     plt.close()
 
-def plot_returns_with_events(cumulative_prices, variability_series, ticker_name='SP', percentile_threshold=95, events=None):
+def plot_returns_with_events(cumulative_prices, dfs_coeffs, extreme_dates, ticker_name='SP', top_pct=3, events=None):
     """
-    Plot cumulative prices with vertical lines for events and D4 peak dates.
+    Plot cumulative prices with vertical lines for events and wavelet peak dates.
 
     Parameters:
-    - cumulative_prices: pd.Series, cumulative prices of the financial time series
-    - variability_series: dict, variability series for all levels (e.g., from compute_all_variability_series)
-    - ticker_name: str, name of the ticker (default 'SP')
-    - percentile_threshold: int, percentile threshold for identifying peaks (default 95)
-    - events: dict, dictionary of dates and corresponding event descriptions (default None)
+    - cumulative_prices (pd.Series): Cumulative prices of the financial time series.
+    - dfs_coeffs (list): List of DataFrames, each with a 'Variability' column and temporal index.
+    - extreme_dates (dict): Dictionary of extreme dates {coef_name: DatetimeIndex} from extract_extreme_dates.
+    - ticker_name (str): Name of the ticker (default 'SP').
+    - top_pct (float): Percentile threshold used for identifying peaks (default 3).
+    - events (dict): Dictionary of dates and corresponding event descriptions (default None).
     """
     if events is None:
         events = {
@@ -315,45 +316,46 @@ def plot_returns_with_events(cumulative_prices, variability_series, ticker_name=
             "2012-12-31": "Agreement to avoid \"fiscal cliff\""
         }
 
-    # Compute D4 threshold and peak dates
-    d4_series = variability_series['D4']
-    threshold_d4 = np.percentile(d4_series.dropna(), percentile_threshold)
-    peak_dates = d4_series[d4_series > threshold_d4].index
+    # Seleccionar las fechas extremas para cD4 (índice 3 en dfs_coeffs, ya que level=4)
+    peak_dates = extreme_dates.get('cD4', pd.DatetimeIndex([]))
 
-    # Create the plot
+    # Crear la gráfica
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
-    # Plot cumulative prices
-    ax1.plot(cumulative_prices.index, cumulative_prices, label='Coefficient Band', color='black')
-    ax1.set_title(f'Returns and Wavelet Coef. for {ticker_name} - Threshold: {percentile_threshold}th', fontsize=20, fontweight='bold')
-    ax1.set_ylabel('Price')
-    ax1.legend(loc='best')
+    # Graficar precios acumulados
+    ax1.plot(cumulative_prices.index, cumulative_prices, label='Cumulative Price', color='black')
+    ax1.set_title(f'Returns and Wavelet Peaks for {ticker_name} - Top {top_pct}%', fontsize=20, fontweight='bold')
+    ax1.set_ylabel('Price', fontsize=14)
+    ax1.tick_params(axis='both', labelsize=12)
 
-    # Add vertical lines and text for events
+    # Añadir líneas verticales y texto para eventos
     for date_str, event_desc in events.items():
         date = pd.to_datetime(date_str)
-        ax1.axvline(x=date, color='gray', linestyle='--', alpha=0.7, label='Event' if date == pd.to_datetime(list(events.keys())[0]) else "")
-        # Place text above the line, adjusted to a percentage of the price range
-        y_pos = cumulative_prices.min() + (cumulative_prices.max() - cumulative_prices.min()) * 0.05
-        ax1.text(date, y_pos, event_desc, rotation=90, verticalalignment='bottom', fontsize=14)
+        # Verificar que la fecha esté dentro del rango de cumulative_prices
+        if date in cumulative_prices.index:
+            ax1.axvline(x=date, color='gray', linestyle='--', alpha=0.7, label='Event' if date_str == list(events.keys())[0] else "")
+            # Posicionar el texto justo por encima del mínimo de los precios
+            y_pos = cumulative_prices.min() + (cumulative_prices.max() - cumulative_prices.min()) * 0.05
+            ax1.text(date, y_pos, event_desc, rotation=90, verticalalignment='bottom', fontsize=14,fontweight='bold')
 
-    # Add vertical lines for D4 peaks
+    # Añadir líneas verticales para los picos de cD4
     for date in peak_dates:
-        ax1.axvline(x=cumulative_prices.index[date], color='red', linestyle='--', alpha=0.5, label='D4 Peak' if date == min(peak_dates) else "")
+        if date in cumulative_prices.index:  # Verificar que la fecha esté en el índice
+            ax1.axvline(x=date, color='red', linestyle='--', alpha=0.2, label='cD4 Peak' if date == min(peak_dates, default=date) else "")
 
-    # Set x-axis limits to match cumulative_prices
+    # Establecer límites del eje x para coincidir con cumulative_prices
     ax1.set_xlim(cumulative_prices.index[0], cumulative_prices.index[-1])
 
-    # Adjust legend to avoid duplication
+    # Ajustar la leyenda para evitar duplicaciones
     handles, labels = ax1.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax1.legend(by_label.values(), by_label.keys(), loc='best')
+    ax1.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=12)
 
     plt.tight_layout()
-    # Save the plot as PNG in the 'plots' folder
+    # Crear la carpeta 'plots' si no existe
     os.makedirs('plots', exist_ok=True)
-    fig.savefig(os.path.join('plots', f'returns_with_events_{ticker_name}_{percentile_threshold}th.png'))
-    #plt.show()
+    # Guardar la gráfica
+    plt.savefig(os.path.join('plots', f'returns_with_events_{ticker_name}_{top_pct}th.png'))
     plt.close()
 
 def compute_H_series(log_returns, coeffs, level):
@@ -722,7 +724,9 @@ if __name__ == "__main__":
     plot_extreme_dates(cumulative_prices, extreme_dates, ticker_name, top_pct)
     # Graficar precios y coeficientes
     plot_extreme_dates_with_coefficients(cumulative_prices, dfs_coeffs, extreme_dates, ticker_name, top_pct, min_initial_data=100)
-    
+    # Graficar precios con eventos y picos
+    plot_returns_with_events(cumulative_prices, dfs_coeffs, extreme_dates, ticker_name, top_pct)
+
     H_series, detail_series = compute_H_series(log_returns, df_coeffs, level)
     plot_H_series_with_details(H_series, detail_series, cumulative_prices, ticker_name, level)
     energy_series = compute_mobile_energy(H_series, window_size)
